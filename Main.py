@@ -1,5 +1,8 @@
 
 import AllegroScrapper
+import CategoryScrapper
+from multiprocessing import Pool
+import lxml
 #import colorama
 
 # init the colorama module
@@ -17,114 +20,28 @@ import AllegroScrapper
 #threads = set()
 
 #total_urls_visited = 0
-all = AllegroScrapper.AllegroScrapper()
-all.scrap(8926102589)
-all.getPrice2()
-all.getName2()
+if __name__ == '__main__':
+    #cat = CategoryScrapper.CategoryScrapper()
+    #p = Pool(10)
+    #p.map(cat.scrap,"karmy-mokra-karma-90062")
+    #p.terminate()
+    #p.join()
+    all = AllegroScrapper.AllegroScrapper()
+    all.scrap(9039523750)
+    all.getName2()
+    all.loadDataFromJson()
+    all.getOriginalPrice()
 
-all.scrap(6850814534)
-all.getPrice2()
-all.getName2()
+    all.getPrice()
+    all.getOwner()
+    #all.getTransactionsNumber()
 
-"""def is_valid(url):
-    
-    #Checks whether `url` is a valid URL.
-    
-    parsed = urlparse(url)
-    return bool(parsed.netloc) and bool(parsed.scheme)
-
-
-def get_all_website_links(url):
-    
-    #Returns all URLs that is found on `url` in which it belongs to the same website
-    
-    # all URLs of `url`
-    urls = set()
-    # domain name of the URL without the protocol
-    domain_name = urlparse(url).netloc
-    soup = BeautifulSoup(requests.get(url).content, "html.parser")
-    for a_tag in soup.findAll("a"):
-        href = a_tag.attrs.get("href")
-        if href == "" or href is None:
-            # href empty tag
-            continue
-        # join the URL if it's relative (not absolute link)
-        href = urljoin(url, href)
-        parsed_href = urlparse(href)
-        # remove URL GET parameters, URL fragments, etc.
-        href = parsed_href.scheme + "://" + parsed_href.netloc + parsed_href.path
-        if not is_valid(href):
-            # not a valid URL
-            continue
-        if href in internal_urls:
-            # already in the set
-            continue
-        if domain_name not in href:
-            # external link
-            if href not in external_urls:
-                print(f"{GRAY}[!] External link: {href}{RESET}")
-                external_urls.add(href)
-            continue
-        if "kategoria" in href:
-            if href not in category_links:
-                print(f"{GREEN}[*] Category link: {href} {len(category_links)} {RESET}")
-                category_links.add(href)
-        urls.add(href)
-        internal_urls.add(href)
-    return urls
-
-
-def crawl(url, max_urls=50):
-    
-    #Crawls a web page and extracts all links.
-    #You'll find all links in `external_urls` and `internal_urls` global set variables.
-    #params:
-        #max_urls (int): number of max urls to crawl, default is 30.
-    
-    global total_urls_visited
-    total_urls_visited += 1
-    links = get_all_website_links(url)
-    for link in links:
-        if total_urls_visited > max_urls:
-            break
-        crawl(link, max_urls=max_urls)
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Link Extractor Tool with Python")
-    parser.add_argument("url", help="The URL to extract links from.")
-    parser.add_argument("-m", "--max-urls", help="Number of max URLs to crawl, default is 30.", default=2000, type=int)
-
-    args = parser.parse_args()
-    url = args.url
-    max_urls = args.max_urls
-
-    crawl(url, max_urls=max_urls)
-
-    print("[+] Total Internal links:", len(internal_urls))
-    print("[+] Total External links:", len(external_urls))
-    print("[+] Total URLs:", len(external_urls) + len(internal_urls))
-
-    domain_name = urlparse(url).netloc
-
-    # save the internal links to a file
-    with open(f"{domain_name}_internal_links.txt", "w") as f:
-        for internal_link in internal_urls:
-            print(internal_link.strip(), file=f)
-
-
-            #if "kategoria" in internal_link:
-                #thread = threading.Thread(target=crawl, args=(internal_link, max_urls))
-                #threads.add(thread)
-                #thread.start()
-                #category_links.add(internal_link)
-                #print(f"{RED}[*] category: {internal_link}{RESET}")
-
-
-    # save the external links to a file
-    #with open(f"{domain_name}_external_links.txt", "w") as f:
-    #   for external_link in external_urls:
-    #       print(external_link.strip(), file=f)
-    """
+    #all.getJSON()
+    all.scrap(6850814534)
+    all.loadDataFromJson()
+    all.getName2()
+    all.getOwner()
+    all.getQuantity()
+    all.getTransactionsNumber()
+    all.getSold()
+    all.getOriginalPrice()
