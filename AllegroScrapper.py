@@ -1,5 +1,4 @@
 from bs4 import BeautifulSoup
-import grequests
 import requests
 import time
 import json
@@ -20,14 +19,11 @@ class AllegroScrapper:
         self.originalPrice = None
 
     def scrap(self,OfferID):
-        links = [f"https://allegro.pl/oferta/{OfferID}",
-                 f"https://allegro.pl/oferta/{OfferID}",
-                 ]
-        reqs = [grequests.get(link) for link in links]
-        resp = grequests.map(reqs)
-        for r in resp:
-            self.soup = BeautifulSoup(r.text, 'lxml')
-        return True
+        link = f"https://allegro.pl/oferta/{OfferID}"
+        resp = requests.get(link)
+        #print(resp.content)
+        self.soup = BeautifulSoup(resp.content, 'html.parser')
+
 
     def getName(self):
         if self.soup is None:
@@ -53,8 +49,8 @@ class AllegroScrapper:
         if self.soup is None:
             raise Exception("Soup cannot be None - use scrap method first")
         else:
-            self.data = json.loads(str(self.soup.find("script", {"data-serialize-box-name": "summary"}).text))
-            print(json.dumps(self.data,indent=4,sort_keys=True))
+            self.data = json.loads(self.soup.find("script", {"data-serialize-box-name": "summary"}).string)
+            #print(json.dumps(self.data,indent=4,sort_keys=True))
 
 
     def loadDataFromJson(self):
