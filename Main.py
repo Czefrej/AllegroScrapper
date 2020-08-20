@@ -1,47 +1,36 @@
 
 import AllegroScrapper
-import CategoryScrapper
+from CategoryScrapper import CategoryScrapper
+from DBManager import DBManager
 from multiprocessing import Pool
-import lxml
+from Category import Category
 #import colorama
-
-# init the colorama module
-#colorama.init()
-
-#GREEN = colorama.Fore.GREEN
-#GRAY = colorama.Fore.LIGHTBLACK_EX
-#RESET = colorama.Fore.RESET
-#RED = colorama.Fore.RED
-
-# initialize the set of links (unique links)
-#internal_urls = set()
-#external_urls = set()
-#category_links = set()
-#threads = set()
+import mysql.connector
+from AllegroApi import AllegroApi
 
 #total_urls_visited = 0
-if __name__ == '__main__':
-    #cat = CategoryScrapper.CategoryScrapper()
-    #p = Pool(10)
-    #p.map(cat.scrap,"karmy-mokra-karma-90062")
-    #p.terminate()
-    #p.join()
+def Main(event,context=None):
+    if __name__ == "__main__":
+        #print(event['key'])
+
+        #database = DBManager()
+        #for i in range (151):
+            #print(f"{database.randomProxy()} {i}")
+        api = AllegroApi()
+        api.auth()
+        api.getCategories()
+        '''
+        category = CategoryScrapper()
+
+        category.scrap(112739)'''
+
+def scrapOffers(ID):
     all = AllegroScrapper.AllegroScrapper()
-    all.scrap(9039523750)
-    all.getName2()
+    all.scrap(ID)
     all.loadDataFromJson()
-    all.getOriginalPrice()
+Main('a')
+#Main({'key':'32100023'})
 
-    all.getPrice()
-    all.getOwner()
-    #all.getTransactionsNumber()
+#database = DBManager()
+#proxies = database.saveProxies()
 
-    #all.getJSON()
-    all.scrap(6850814534)
-    all.loadDataFromJson()
-    all.getName2()
-    all.getOwner()
-    all.getQuantity()
-    all.getTransactionsNumber()
-    all.getSold()
-    all.getOriginalPrice()

@@ -4,7 +4,10 @@ import json
 import colorama
 import os
 import time
+import pandas as pd
 from DBManager import DBManager
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 class AllegroApi:
 
@@ -18,7 +21,12 @@ class AllegroApi:
         self.limit = 9000
         self.categories = []
 
-    def auth(self, ClientId, secret):
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+        self.session = requests.Session()
+        self.session.mount('http://', HTTPAdapter(max_retries=retries))
+        self.session.mount('https://', HTTPAdapter(max_retries=retries))
+
+    def auth(self, ClientId="48b436cf19624df6ab6788d592ffa2ac", secret="A2uN76nR7FdNju3WNq8xj8X3Po45Nv3R0F5JtazNXjYT8u605dZRMDM9OMApXnBS"):
         url = 'https://allegro.pl/auth/oauth/token?grant_type=client_credentials'
         authToken = f"{ClientId}:{secret}"
         encodedBytes = base64.b64encode(authToken.encode("utf-8"))
@@ -33,7 +41,7 @@ class AllegroApi:
         self.waitIfExceeded()
         categories = set()
         url = "https://api.allegro.pl/sale/categories"
-        x = requests.get(url, headers={"Authorization": f"Bearer {self.accessToken}","accept":"application/vnd.allegro.public.v1+json"})
+        x = self.session.get(url, headers={"Authorization": f"Bearer {self.accessToken}","accept":"application/vnd.allegro.public.v1+json"})
         self.requestsNumber +=1
         response = x.json()['categories']
         for i in response:
@@ -46,7 +54,7 @@ class AllegroApi:
         self.waitIfExceeded()
         categories = set()
         url = f"https://api.allegro.pl/sale/categories?parent.id={id}"
-        x = requests.get(url, headers={"Authorization": f"Bearer {self.accessToken}",
+        x = self.session.get(url, headers={"Authorization": f"Bearer {self.accessToken}",
                                        "accept": "application/vnd.allegro.public.v1+json"})
         self.requestsNumber +=1
         response = x.json()
@@ -62,8 +70,8 @@ class AllegroApi:
 
     def waitIfExceeded(self):
         if(self.limit <= self.requestsNumber):
-            #df = pd.DataFrame(self.categories)
-            #df.to_csv('categories.csv', encoding='utf-8', index=False,sep="\t",header=['ID','Name','Parent-id'])
+            df = pd.DataFrame(self.categories)
+            df.to_csv('categories.csv', encoding='utf-8', index=False,sep="\t",header=['ID','Name','Parent-id'])
             print(f'{self.RED} Result exported to csv{self.RESET}')
             db = DBManager()
             db.saveCategoryTo()
