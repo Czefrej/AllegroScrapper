@@ -68,6 +68,13 @@ class DBManager:
         self.mydb.commit()
         self.mydb.close()
 
+    def saveOffers(self,file):
+        mycursor = self.mydb.cursor()
+        sql = f"LOAD DATA LOCAL INFILE '{file}' INTO TABLE `offer`;"
+        mycursor.execute(sql)
+        self.mydb.commit()
+        self.mydb.close()
+
     def getCategories(self):
         mycursor = self.mydb.cursor()
         sql = "SELECT id from category WHERE id NOT IN (SELECT `parent-id` FROM category GROUP BY `parent-id`)"

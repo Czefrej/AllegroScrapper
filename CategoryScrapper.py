@@ -10,6 +10,9 @@ import colorama
 import json
 import os
 from DBManager import DBManager
+import traceback
+import pandas as pd
+
 
 class CategoryScrapper:
     def __init__(self):
@@ -25,7 +28,6 @@ class CategoryScrapper:
 
         self.offers = set()
 
-        self.data = None
         self.totalOffers = None
 
         self.session = requests.Session()
@@ -58,6 +60,8 @@ class CategoryScrapper:
         return n
 
     def scrap(self,CategoryID):
+        offers = dict()
+        totalOffers = 0
         page = 1
         requests = 0
         self.RequestLimitPerProxy = self.randomLimitPerProxy()
@@ -94,54 +98,75 @@ class CategoryScrapper:
                 else:
                     print(
                         f"{self.GREEN}[{reqs.status_code}] Category link: {link}  > {self.session.proxies['https']} {page}{self.RESET}")
-                    self.soup = BeautifulSoup(reqs.text, 'lxml')
-
+                    soup = BeautifulSoup(reqs.text, 'lxml')
+                    offers = self.getOffers(soup,offers)
                 if (reqs.status_code == 429):
                     print(reqs.headers)
                 if page == 1:
                     try:
-                        self.totalOffers = self.getNumberOfOffers()
+                        totalOffers = self.getNumberOfOffers(soup)
                     except:
                         print(link)
-                    print(f"{self.GRAY} Found {self.totalOffers} offers{self.RESET}")
+                    print(f"{self.GRAY} Found {totalOffers} offers{self.RESET}")
 
-                    if(self.totalOffers/60 > 100):
-                        print(self.totalOffers)
+                    #if(totalOffers/60 > 100):
+                        #print(totalOffers)
 
 
-            except:
+            except Exception as e:
                 print(f"{self.RED}[FAILED] Category link: {link}  > {self.session.proxies['https']}/{self.session.headers['User-Agent']}{self.RESET}")
-
+                print(e)
+                print(traceback.print_tb(e.__traceback__))
             page += 1
             requests += 1
 
+        self.saveOffers(offers, CategoryID)
 
 
-    def getNumberOfOffers(self):
-        if self.soup is None:
+
+    def getNumberOfOffers(self,soup):
+        if soup is None:
             raise Exception("Soup cannot be None - use scrap method first")
         else:
-            return int(self.soup.find("div", {"data-box-name": "Listing title"}).find("div").find("div").text.replace("oferta","ofert").replace("oferty","ofert").replace("ofert","").replace(" ",""))
+            return int(soup.find("div", {"data-box-name": "Listing title"}).find("div").find("div").text.replace("oferta","ofert").replace("oferty","ofert").replace("ofert","").replace(" ",""))
 
-    def getJSON(self):
-        if self.soup is None:
+    def getJSON(self,soup):
+        if soup is None:
             raise Exception("Soup cannot be None - use scrap method first")
         else:
             try:
-                self.data = json.loads(str(self.soup.find("script", {"data-serialize-box-name": "items-v3"}).text))["__listing_StoreState_base"]
+                data = json.loads(soup.find("script", {"data-serialize-box-name": "items-v3"}).string)
+                data = json.loads(data["__listing_StoreState_base"])
             except:
-                raise Exception("Website is empty")
-            #print(json.dumps(self.data,indent=4,sort_keys=True))
+                data = json.loads(soup.find("script", {"data-serialize-box-name": "items-v3"}).string)
+                data = json.loads(data["__listing_StoreState_base-mobile"])
+            return data
+
+    def getOffers(self,soup,offers):
+        data = self.getJSON(soup)['items']['elements']
+        for i in data:
+            if 'id' in i:
+                if i["bidInfo"] and "nikt" not in i["bidInfo"].lower():
+                    transactions = int(i["bidInfo"].split(' ')[0])
+                else:
+                    transactions = 0
+
+                if i['id'] not in offers:
+                    offers[i['id']] = {'name': i['title']['text'],'stock':i['quantity'],'price':i['price']['normal']['amount'],'original-price':0,'transactions':transactions}
+        return offers
 
 
-    def loadDataFromJson(self):
-        products = set()
-        if self.soup is None:
-            raise Exception("Soup cannot be None - use scrap method first")
-        else:
-            self.getJSON()
-            for i in self.data["items"]["itemsGroups"]:
-                for x in i["items"]:
-                    products.add(x['id'])
+    def saveOffers(self,offers,CategoryID):
+        auctions = list()
 
-        print(f"{self.GRAY} Znaleziono {len(products)} produktów {self.RESET}")
+        for o in offers:
+            id = o
+            o = offers[o]
+            auctions.append([id,o['name'],o['original-price'],o['price'],CategoryID,o['stock'],o['transactions'],o['transactions']])
+
+        df = pd.DataFrame(auctions)
+        df.to_csv(f'offers-{CategoryID}.csv', encoding='utf-8', index=False, header=None, sep="\t")
+        print(f'{self.RED} Result exported to csv{self.RESET}')
+        db = DBManager()
+        db.saveOffers(f'offers-{CategoryID}.csv')
+        print(f'{self.GREEN} Result saved to DataBase{self.RESET}')

@@ -1,11 +1,10 @@
-
 import AllegroScrapper
 from CategoryScrapper import CategoryScrapper
 from DBManager import DBManager
 from multiprocessing import Pool
 import os
 #import colorama
-import mysql.connector
+
 from AllegroApi import AllegroApi
 event = {}
 event['Records'] = 1
@@ -14,7 +13,7 @@ def Main(event,context=None):
     if __name__ == "__main__":
         #print(event['key'])
         database = DBManager()
-        categories = database.getCategories()[:9]
+        categories = database.getCategories()[10:29]
         category = CategoryScrapper()
         p = Pool(int(os.environ['THREADS']))
         p.map(category.scrap, categories)
