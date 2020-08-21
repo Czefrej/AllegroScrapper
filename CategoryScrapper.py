@@ -8,6 +8,7 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import colorama
 import json
+import os
 from DBManager import DBManager
 
 class CategoryScrapper:
@@ -18,7 +19,7 @@ class CategoryScrapper:
         self.RED = colorama.Fore.RED
 
         self.RequestLimitPerProxy = 10
-        self.DBManager = DBManager()
+
 
         #self.total = 0
 
@@ -46,12 +47,13 @@ class CategoryScrapper:
         self.session.verify = True
 
     def randomProxy(self):
-        proxy_agent = self.DBManager.randomProxy()
+        db = DBManager()
+        proxy_agent = db.randomProxy()
         proxy,agent = str(proxy_agent).split('|')
 
         return proxy,agent
 
-    def randomLimitPerProxy(self,From = 7,To = 13):
+    def randomLimitPerProxy(self,From = int(os.environ['REQ_PER_PROXY_FLOOR']),To = int(os.environ['REQ_PER_PROXY_CEIL'])):
         n = random.randint(From, To)
         return n
 
@@ -85,13 +87,13 @@ class CategoryScrapper:
                 else:
                     reqs = self.session.get(link, allow_redirects=True)
                     base_link = reqs.url
-                if (reqs.status_code) == 301 & page > 1:
+                if reqs.status_code == 301 and page > 1:
                     page -= 1
                     print(f"{self.RED}[>] Found {page} pages of category {CategoryID}")
                     break
                 else:
                     print(
-                        f"{self.GREEN}[{reqs.status_code}] Category link: {link}  > {self.session.proxies['https']}{self.RESET}")
+                        f"{self.GREEN}[{reqs.status_code}] Category link: {link}  > {self.session.proxies['https']} {page}{self.RESET}")
                     self.soup = BeautifulSoup(reqs.text, 'lxml')
 
                 if (reqs.status_code == 429):
@@ -101,12 +103,19 @@ class CategoryScrapper:
                         self.totalOffers = self.getNumberOfOffers()
                     except:
                         print(link)
-                    print(f"{self.GRAY} Found {self.totalOffers/60} offers{self.RESET}")
+                    print(f"{self.GRAY} Found {self.totalOffers} offers{self.RESET}")
+
+                    if(self.totalOffers/60 > 100):
+                        print(self.totalOffers)
+
+
             except:
                 print(f"{self.RED}[FAILED] Category link: {link}  > {self.session.proxies['https']}/{self.session.headers['User-Agent']}{self.RESET}")
 
             page += 1
             requests += 1
+
+
 
     def getNumberOfOffers(self):
         if self.soup is None:

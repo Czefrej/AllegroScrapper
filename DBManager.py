@@ -75,6 +75,6 @@ class DBManager:
         myresult = mycursor.fetchall()
         mycursor.close()
         ids = []
-        for x in myresult:
-            ids.append(x[0])
+        for i in myresult:
+            ids.append(i[0])
         return ids
