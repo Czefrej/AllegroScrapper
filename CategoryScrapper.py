@@ -1,8 +1,5 @@
 from bs4 import BeautifulSoup
 import requests
-from requests.auth import HTTPProxyAuth
-import time
-import threading
 import random
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -11,7 +8,7 @@ import json
 import os
 from DBManager import DBManager
 import traceback
-import pandas as pd
+import csv
 
 
 class CategoryScrapper:
@@ -20,15 +17,10 @@ class CategoryScrapper:
         self.GRAY = colorama.Fore.LIGHTBLACK_EX
         self.RESET = colorama.Fore.RESET
         self.RED = colorama.Fore.RED
+        self.LIGHT_GREEN = colorama.Fore.LIGHTGREEN_EX
 
         self.RequestLimitPerProxy = 10
 
-
-        #self.total = 0
-
-        self.offers = set()
-
-        self.totalOffers = None
 
         self.session = requests.Session()
         self.session.proxies = {
@@ -37,7 +29,7 @@ class CategoryScrapper:
             "ftp":"10.10.1.10:3128"
         }
 
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+        retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[502, 503, 504])
         self.session.mount('http://', HTTPAdapter(max_retries=retries))
         self.session.mount('https://', HTTPAdapter(max_retries=retries))
 
@@ -71,13 +63,19 @@ class CategoryScrapper:
         self.session.proxies['http'] = proxy.replace("http", "https")
         self.session.proxies['https'] = proxy.replace("http","https")
 
+        if (int(os.environ['VERBOSE']) < 1):
+            print(f"{self.GREEN}Starting scrapping of {base_link}{self.RESET}")
 
         while True:
             if(requests >= self.RequestLimitPerProxy):
                 requests = 0
                 self.RequestLimitPerProxy = self.randomLimitPerProxy()
                 proxy, agent = self.randomProxy()
-                print(f"{self.GRAY}Exceeded amount of requests per proxy. Randoming new proxy. > {proxy}{self.RESET}")
+
+                if(int(os.environ['VERBOSE'])==1):
+                    print(f"{self.GRAY}Exceeded amount of requests per proxy. Randoming new proxy. > {proxy}{self.RESET}")
+
+
                 self.session.headers["User-Agent"] = agent
                 self.session.proxies['http'] = proxy.replace("http", "https")
                 self.session.proxies['https'] = proxy.replace("http", "https")
@@ -91,14 +89,15 @@ class CategoryScrapper:
                 else:
                     reqs = self.session.get(link, allow_redirects=True)
                     base_link = reqs.url
-                if reqs.status_code == 301 and page > 1:
+                if (reqs.status_code == 301 and page > 1) or page > 100:
                     page -= 1
                     print(f"{self.RED}[>] Found {page} pages of category {CategoryID}")
                     break
                 else:
-                    print(
-                        f"{self.GREEN}[{reqs.status_code}] Category link: {link}  > {self.session.proxies['https']} {page}{self.RESET}")
+                    if (int(os.environ['VERBOSE']) == 1):
+                        print(f"{self.GREEN}[{reqs.status_code}] Category link: {link}  > {self.session.proxies['https']} {page}{self.RESET}")
                     soup = BeautifulSoup(reqs.text, 'lxml')
+
                     offers = self.getOffers(soup,offers)
                 if (reqs.status_code == 429):
                     print(reqs.headers)
@@ -107,7 +106,7 @@ class CategoryScrapper:
                         totalOffers = self.getNumberOfOffers(soup)
                     except:
                         print(link)
-                    print(f"{self.GRAY} Found {totalOffers} offers{self.RESET}")
+                    print(f"{self.GRAY}Found {totalOffers} offers{self.RESET}")
 
                     #if(totalOffers/60 > 100):
                         #print(totalOffers)
@@ -121,6 +120,8 @@ class CategoryScrapper:
             requests += 1
 
         self.saveOffers(offers, CategoryID)
+        if(int(os.environ['VERBOSE']) == 0):
+            print(f"{self.LIGHT_GREEN}Retrieved {len(offers)}/{totalOffers}{self.RESET}")
 
 
 
@@ -142,9 +143,9 @@ class CategoryScrapper:
                 data = json.loads(data["__listing_StoreState_base-mobile"])
             return data
 
+
     def getOffers(self,soup,offers):
-        data = self.getJSON(soup)['items']['elements']
-        for i in data:
+        for i in self.getJSON(soup)['items']['elements']:
             if 'id' in i:
                 if i["bidInfo"] and "nikt" not in i["bidInfo"].lower():
                     transactions = int(i["bidInfo"].split(' ')[0])
@@ -157,6 +158,7 @@ class CategoryScrapper:
 
 
     def saveOffers(self,offers,CategoryID):
+        fileName = f'tmp/offers-{CategoryID}.csv'
         auctions = list()
 
         for o in offers:
@@ -164,9 +166,16 @@ class CategoryScrapper:
             o = offers[o]
             auctions.append([id,o['name'],o['original-price'],o['price'],CategoryID,o['stock'],o['transactions'],o['transactions']])
 
-        df = pd.DataFrame(auctions)
-        df.to_csv(f'offers-{CategoryID}.csv', encoding='utf-8', index=False, header=None, sep="\t")
+        with open(fileName, 'w', newline='') as myfile:
+            wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC,delimiter='\t')
+            wr.writerow(auctions)
+
+
         print(f'{self.RED} Result exported to csv{self.RESET}')
+
         db = DBManager()
-        db.saveOffers(f'offers-{CategoryID}.csv')
+        db.saveOffers(f'{fileName}')
+        if os.path.isfile(fileName):
+            os.remove(fileName)
+
         print(f'{self.GREEN} Result saved to DataBase{self.RESET}')
