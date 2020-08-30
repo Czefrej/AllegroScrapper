@@ -9,7 +9,7 @@ import os
 from DBManager import DBManager
 import traceback
 import csv
-
+import lxml
 
 class CategoryScrapper:
     def __init__(self):
@@ -96,7 +96,7 @@ class CategoryScrapper:
                 else:
                     if (int(os.environ['VERBOSE']) == 1):
                         print(f"{self.GREEN}[{reqs.status_code}] Category link: {link}  > {self.session.proxies['https']} {page}{self.RESET}")
-                    soup = BeautifulSoup(reqs.text, 'lxml')
+                    soup = BeautifulSoup(reqs.text, 'html')
 
                     offers = self.getOffers(soup,offers)
                 if (reqs.status_code == 429):
@@ -164,12 +164,17 @@ class CategoryScrapper:
         for o in offers:
             id = o
             o = offers[o]
-            auctions.append([id,o['name'],o['original-price'],o['price'],CategoryID,o['stock'],o['transactions'],o['transactions']])
-
-        with open(fileName, 'w', newline='') as myfile:
-            wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC,delimiter='\t')
-            wr.writerow(auctions)
-
+            auctions.append([id, o['name'], o['original-price'], o['price'], CategoryID, o['stock'], o['transactions'],
+                             o['transactions']])
+        try:
+            with open(fileName, 'w', newline='') as myfile:
+                wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC,delimiter='\t')
+                wr.writerow(auctions)
+        except:
+            fileName = f'/tmp/offers-{CategoryID}.csv'
+            with open(fileName, 'w', newline='') as myfile:
+                wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC, delimiter='\t')
+                wr.writerow(auctions)
 
         print(f'{self.RED} Result exported to csv{self.RESET}')
 
