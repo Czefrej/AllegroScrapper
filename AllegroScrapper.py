@@ -1,9 +1,9 @@
 from bs4 import BeautifulSoup
 import requests
-import time
 import json
 import colorama
-import re
+
+
 class AllegroScrapper:
     def __init__(self):
         self.soup = None
@@ -18,12 +18,11 @@ class AllegroScrapper:
         self.sold = None
         self.originalPrice = None
 
-    def scrap(self,OfferID):
+    def scrap(self, OfferID):
         link = f"https://allegro.pl/oferta/{OfferID}"
         resp = requests.get(link)
-        #print(resp.content)
+        # print(resp.content)
         self.soup = BeautifulSoup(resp.content, 'html.parser')
-
 
     def getName(self):
         if self.soup is None:
@@ -50,8 +49,7 @@ class AllegroScrapper:
             raise Exception("Soup cannot be None - use scrap method first")
         else:
             self.data = json.loads(self.soup.find("script", {"data-serialize-box-name": "summary"}).string)
-            #print(json.dumps(self.data,indent=4,sort_keys=True))
-
+            # print(json.dumps(self.data,indent=4,sort_keys=True))
 
     def loadDataFromJson(self):
         if self.soup is None:
@@ -59,10 +57,11 @@ class AllegroScrapper:
         else:
             self.getJSON()
             self.owner = self.data["sellerLogo"]["sellerName"]
-            self.price = int(self.data["price"]["priceInteger"]) + (int(self.data["price"]["priceFraction"])/100)
+            self.price = int(self.data["price"]["priceInteger"]) + (int(self.data["price"]["priceFraction"]) / 100)
             self.quantity = int(self.data["transactionSection"]["availableQuantity"]["value"])
             if self.data["notifyAndWatch"]["sellingMode"]["buyNow"]["price"]["original"] is not None:
-                self.originalPrice = float(str(self.data["notifyAndWatch"]["sellingMode"]["buyNow"]["price"]["original"]["amount"]))
+                self.originalPrice = float(
+                    str(self.data["notifyAndWatch"]["sellingMode"]["buyNow"]["price"]["original"]["amount"]))
             else:
                 self.originalPrice = 0
 
@@ -72,8 +71,6 @@ class AllegroScrapper:
             else:
                 self.transactions = 0
                 self.sold = 0
-
-
 
     def getTransactionsNumber(self):
         if self.transactions is not None:
@@ -99,14 +96,13 @@ class AllegroScrapper:
         else:
             return 0
 
-
     def getPrice(self):
         if self.price is not None:
             print(self.price)
         if self.soup is None:
             raise Exception("Soup cannot be None - use scrap method first")
         else:
-            print(self.soup.find("meta", {"itemprop" : "price"})["content"])
+            print(self.soup.find("meta", {"itemprop": "price"})["content"])
 
     def getQuantity(self):
         if self.quantity is not None:
@@ -120,4 +116,4 @@ class AllegroScrapper:
         if self.soup is None:
             raise Exception("Soup cannot be None - use scrap method first")
         else:
-            print(self.soup.find("meta", {"itemprop" : "name"})["content"])
+            print(self.soup.find("meta", {"itemprop": "name"})["content"])

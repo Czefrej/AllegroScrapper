@@ -1,11 +1,10 @@
 import AllegroScrapper
-from CategoryScrapper import CategoryScrapper
 from DBManager import DBManager
+from AllegroCategoryScrapper import AllegroCategoryScrapper
 from multiprocessing import Pool
 import os
 from AllegroApi import AllegroApi
 import json
-import colorama
 
 db = None
 
@@ -13,7 +12,7 @@ def Main(event,context=None):
     if __name__ == "__main__" or __name__ == "Main":
         print(event['Records'][0]['body'])
         print('Connecting to database....')
-        db = DBManager(remote=True)
+        db = DBManager()
         print("Connected!")
         allegro = AllegroApi(db)
         allegro.auth()
@@ -21,4 +20,15 @@ def Main(event,context=None):
 
         return response
 
+def ScrapCategory(event = None,context=None):
+    if __name__ == "__main__" or __name__ == "Main":
+        print('Connecting to database....')
+        db = DBManager(tunnel=True)
+        print("Connected!")
+        allegro = AllegroCategoryScrapper(db)
+        allegro.auth()
+        response = allegro.getCategories()
+        return response
+
 #Main({"Records":[{"body":12}]})
+ScrapCategory()

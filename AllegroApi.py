@@ -31,12 +31,12 @@ class AllegroApi:
 
         self.session = requests.Session()
 
-        '''
+        """
         retries = Retry(total=5, backoff_factor=0.4, status_forcelist=[502, 503, 504])
         self.session = requests.Session()
         self.session.mount('http://', HTTPAdapter(max_retries=retries))
         self.session.mount('https://', HTTPAdapter(max_retries=retries))
-        '''
+        """
         self.session.proxies = {
             "http": "http://ypeokuao-1:9ui94tr5b0ac@2.56.101.179:80",
             "https": "http://ypeokuao-1:9ui94tr5b0ac@2.56.101.179:80",
@@ -45,6 +45,16 @@ class AllegroApi:
 
     def auth(self, ClientId="cb1aca5e5fbb497bb237619d7a2f9e1b",
              secret="ZIoIulPVa2aaf4gCRckBuha4DI7OL9c9ceByzMj4sg3U54tVdjOMLtPzRlZoJHj5"):
+
+        apiCredentials = self.db.getAPICredentials()
+        if apiCredentials is not None:
+            apiCredentials = apiCredentials.split(',')
+            print(apiCredentials)
+            ClientId = apiCredentials[0]
+            secret = apiCredentials[1]
+        else:
+            print("APICredentials are none")
+
         url = 'https://allegro.pl/auth/oauth/token?grant_type=client_credentials'
         authToken = f"{ClientId}:{secret}"
         encodedStr = str(base64.b64encode(authToken.encode("utf-8")), "utf-8")
@@ -55,7 +65,7 @@ class AllegroApi:
         try:
             response = response.json()
         except Exception as e:
-            print(response.status_code + ' ,' + response.text)
+            print(f"{response.status_code} , {response.text}, {response.headers}")
             raise Exception(e)
 
         self.APIAccessToken = response["access_token"]
