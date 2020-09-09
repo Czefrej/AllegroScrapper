@@ -95,6 +95,8 @@ class AllegroCategoryScrapper:
             self.categories.append([i['id'], i['name'], "null"])
             print(f"{self.GREEN} [0-lev]{i}{self.RESET}")
             print(f"{self.GREEN}{self.getChildCategories(i['id'], 1)}{self.RESET}")
+        self.saveCategory()
+
 
     def getChildCategories(self, id, lev):
         self.waitIfExceeded()
