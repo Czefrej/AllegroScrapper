@@ -1,6 +1,6 @@
 from DBManager import DBManager
 from AllegroApi import AllegroApi
-
+from AllegroCategoryScrapper import CategoryAPIScrapper
 db = None
 
 def Main(event,context=None):
@@ -20,7 +20,7 @@ def ScrapCategory(event = None,context=None):
         print('Connecting to database....')
         db = DBManager(tunnel=False)
         print("Connected!")
-        allegro = AllegroCategoryScrapper(db)
+        allegro = CategoryAPIScrapper(db)
         allegro.auth()
         response = allegro.getCategories()
         return response
