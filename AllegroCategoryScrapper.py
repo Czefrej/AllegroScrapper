@@ -201,18 +201,20 @@ class CategoryWebScrapper:
 
     def scrap(self, CategoryID, proxy):
         base_link = f"https://allegro.pl/kategoria/{CategoryID}"
-        self.session.proxies['http'] = proxy.replace("http", "https")
-        self.session.proxies['https'] = proxy.replace("http", "https")
+        self.session.proxies['http'] = proxy
+        self.session.proxies['https'] = proxy
 
         link = f"{base_link}"
-
-        reqs = self.session.get(link, allow_redirects=True)
-        soup = BeautifulSoup(reqs.text, 'lxml')
+        try:
+            reqs = self.session.get(link, allow_redirects=True)
+            soup = BeautifulSoup(reqs.text, 'html')
+        except:
+            print(f"{self.RED}[{reqs.status_code}] {reqs.url}{self.RESET}")
         return soup
 
     def getNumberOfOffers(self, soup):
         if soup is None:
-            raise Exception("Soup cannot be None - use scrap method first")
+            return 0
         else:
             return int(
                 soup.find("div", {"data-box-name": "Listing title"}).find("div").find("div").text.replace("oferta",
