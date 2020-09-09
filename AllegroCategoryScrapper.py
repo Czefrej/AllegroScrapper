@@ -12,6 +12,9 @@ class AllegroCategoryScrapper:
         self.APIAccessToken = None
         self.db = db
         self.limit = 9000
+        self.requestsNumber = 0
+        self.maxRetries = 5
+        self.retry_backoff_factor = 0.2
         self.categories = []
 
         self.GREEN = colorama.Fore.GREEN
@@ -34,9 +37,7 @@ class AllegroCategoryScrapper:
 
     def auth(self, ClientId="cb1aca5e5fbb497bb237619d7a2f9e1b",
              secret="ZIoIulPVa2aaf4gCRckBuha4DI7OL9c9ceByzMj4sg3U54tVdjOMLtPzRlZoJHj5"):
-        print("test")
         apiCredentials = self.db.getAPICredentials()
-        print("test")
         if apiCredentials is not None:
             apiCredentials = apiCredentials.split(',')
             print(apiCredentials)
@@ -65,9 +66,30 @@ class AllegroCategoryScrapper:
         self.waitIfExceeded()
         categories = set()
         url = "https://api.allegro.pl/sale/categories"
-        x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
-                                           "accept": "application/vnd.allegro.public.v1+json"})
-        self.requestsNumber += 1
+        try:
+            x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
+                                               "accept": "application/vnd.allegro.public.v1+json"})
+            self.requestsNumber += 1
+        except:
+            retrySucceded = False
+            for retry in range(self.maxRetries):
+                time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
+                self.setNewProxy()
+                self.requestsNumber += 1
+                try:
+                    x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
+                                                       "Accept-Encoding": "br, gzip, deflate",
+                                                       "accept": "application/vnd.allegro.public.v1+json"})
+                    retrySucceded = True
+                    break
+                except:
+                    print(f'Failed {retry}/{self.maxRetries} retry to {url}')
+
+            if retrySucceded:
+                print(f'Retry to {url} succeeded.')
+            else:
+                raise Exception("[ERROR] Couldn't access API.")
+
         response = x.json()['categories']
         for i in response:
             self.categories.append([i['id'], i['name'], "null"])
@@ -78,9 +100,31 @@ class AllegroCategoryScrapper:
         self.waitIfExceeded()
         categories = set()
         url = f"https://api.allegro.pl/sale/categories?parent.id={id}"
-        x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
-                                           "accept": "application/vnd.allegro.public.v1+json"})
-        self.requestsNumber += 1
+        try:
+            x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
+                                               "accept": "application/vnd.allegro.public.v1+json"})
+            self.requestsNumber += 1
+        except:
+            retrySucceded = False
+            for retry in range(self.maxRetries):
+                time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
+                self.setNewProxy()
+                self.requestsNumber += 1
+                try:
+                    x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
+                                                       "Accept-Encoding": "br, gzip, deflate",
+                                                       "accept": "application/vnd.allegro.public.v1+json"})
+                    retrySucceded = True
+                    break
+                except:
+                    print(f'Failed {retry}/{self.maxRetries} retry to {url}')
+
+            if retrySucceded:
+                print(f'Retry to {url} succeeded.')
+            else:
+                print("[ERROR] Couldn't access API.")
+
+
         response = x.json()
         for i in response['categories']:
             tab = ""

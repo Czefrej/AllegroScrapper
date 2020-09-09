@@ -23,7 +23,7 @@ def Main(event,context=None):
 def ScrapCategory(event = None,context=None):
     if __name__ == "__main__" or __name__ == "Main":
         print('Connecting to database....')
-        db = DBManager(tunnel=True)
+        db = DBManager(tunnel=False)
         print("Connected!")
         allegro = AllegroCategoryScrapper(db)
         allegro.auth()
@@ -31,4 +31,4 @@ def ScrapCategory(event = None,context=None):
         return response
 
 #Main({"Records":[{"body":12}]})
-ScrapCategory()
+#ScrapCategory()

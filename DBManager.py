@@ -2,7 +2,6 @@ import mysql.connector
 import time
 
 import mysql.connector
-import sshtunnel
 
 class DBManager:
     def __init__(self, tunnel=False):
