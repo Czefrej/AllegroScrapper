@@ -1,5 +1,4 @@
 from DBManager import DBManager
-from AllegroCategoryScrapper import AllegroCategoryScrapper
 from AllegroApi import AllegroApi
 
 db = None

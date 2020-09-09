@@ -111,10 +111,10 @@ class DBManager:
         sql = f"LOAD DATA LOCAL INFILE '{filename}' INTO TABLE `category-tmp`;"
         mycursor.execute(sql)
         mycursor.execute('SET FOREIGN_KEY_CHECKS=0')
-        sql = "INSERT INTO `category` (`id`,`name`,`parent-id`) " \
-              "SELECT `category-tmp`.`id`,`category-tmp`.`name`,`category-tmp`.`parent-id` " \
+        sql = "INSERT INTO `category` (`id`,`name`,`estimated-amount`,`parent-id`) " \
+              "SELECT `category-tmp`.`id`,`category-tmp`.`name`,`category-tmp`.`estimated-amount`,`category-tmp`.`parent-id` " \
               "FROM `category-tmp` " \
-              "ON DUPLICATE KEY UPDATE `category`.`name` = `category-tmp`.`name`, `category`.`parent-id` = `category-tmp`.`parent-id`;"
+              "ON DUPLICATE KEY UPDATE `category`.`name` = `category-tmp`.`name`, `category-tmp`.`estimated-amount`=`category`.`estimated-amount` ,`category`.`parent-id` = `category-tmp`.`parent-id`;"
         mycursor.execute(sql)
         sql = "DELETE FROM `category-tmp` WHERE 1=1;"
         mycursor.execute(sql)

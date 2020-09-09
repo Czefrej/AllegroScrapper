@@ -6,9 +6,11 @@ import csv
 import os
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+from bs4 import BeautifulSoup
 
-class AllegroCategoryScrapper:
-    def __init__(self,db):
+
+class CategoryAPIScrapper:
+    def __init__(self, db):
         self.APIAccessToken = None
         self.db = db
         self.limit = 9000
@@ -16,6 +18,8 @@ class AllegroCategoryScrapper:
         self.maxRetries = 5
         self.retry_backoff_factor = 0.2
         self.categories = []
+
+        self.webScrapper = CategoryWebScrapper()
 
         self.GREEN = colorama.Fore.GREEN
         self.GRAY = colorama.Fore.LIGHTBLACK_EX
@@ -92,7 +96,8 @@ class AllegroCategoryScrapper:
 
         response = x.json()['categories']
         for i in response:
-            self.categories.append([i['id'], i['name'], "null"])
+            self.categories.append([i['id'], i['name'], self.webScrapper.getNumberOfOffers(
+                self.webScrapper.scrap(i, self.session.proxies['https'])), "null"])
             print(f"{self.GREEN} [0-lev]{i}{self.RESET}")
             print(f"{self.GREEN}{self.getChildCategories(i['id'], 1)}{self.RESET}")
         self.saveCategory()
@@ -134,7 +139,8 @@ class AllegroCategoryScrapper:
                 tab += "\t"
             if (i is not None):
                 print(f"{tab}{self.GREEN} [{lev}-lev]{i}{self.RESET}")
-                self.categories.append([i['id'], str(i['name']), i['parent']['id']])
+                self.categories.append([i['id'], str(i['name']), self.webScrapper.getNumberOfOffers(
+                    self.webScrapper.scrap(i, self.session.proxies['https'])), i['parent']['id']])
                 self.getChildCategories(i['id'], lev + 1)
 
     def waitIfExceeded(self):
@@ -165,3 +171,50 @@ class AllegroCategoryScrapper:
             os.remove(fileName)
         print(f'{self.GREEN} Result saved to DataBase{self.RESET}')
         self.categories = []
+
+
+class CategoryWebScrapper:
+    def __init__(self):
+        self.GREEN = colorama.Fore.GREEN
+        self.GRAY = colorama.Fore.LIGHTBLACK_EX
+        self.RESET = colorama.Fore.RESET
+        self.RED = colorama.Fore.RED
+        self.LIGHT_GREEN = colorama.Fore.LIGHTGREEN_EX
+
+        self.session = requests.Session()
+        self.session.proxies = {
+            "http": "http://ypeokuao-1:9ui94tr5b0ac@2.56.101.179:80",
+            "https": "http://ypeokuao-1:9ui94tr5b0ac@2.56.101.179:80",
+            "ftp": "10.10.1.10:3128"
+        }
+
+        retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[502, 503, 504])
+        self.session.mount('http://', HTTPAdapter(max_retries=retries))
+        self.session.mount('https://', HTTPAdapter(max_retries=retries))
+
+        self.session.headers = {
+            "User-Agent": 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36',
+            "Accept-Encoding": "br, gzip, deflate",
+            "Accept": "test/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": "http://www.google.com/"}
+        self.session.verify = True
+
+    def scrap(self, CategoryID, proxy):
+        base_link = f"https://allegro.pl/kategoria/{CategoryID}"
+        self.session.proxies['http'] = proxy.replace("http", "https")
+        self.session.proxies['https'] = proxy.replace("http", "https")
+
+        link = f"{base_link}"
+
+        reqs = self.session.get(link, allow_redirects=True)
+        soup = BeautifulSoup(reqs.text, 'lxml')
+        return soup
+
+    def getNumberOfOffers(self, soup):
+        if soup is None:
+            raise Exception("Soup cannot be None - use scrap method first")
+        else:
+            return int(
+                soup.find("div", {"data-box-name": "Listing title"}).find("div").find("div").text.replace("oferta",
+                                                                                                          "ofert").replace(
+                    "oferty", "ofert").replace("ofert", "").replace(" ", ""))

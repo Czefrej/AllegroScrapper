@@ -18,8 +18,6 @@ class CategoryScrapper:
         self.RED = colorama.Fore.RED
         self.LIGHT_GREEN = colorama.Fore.LIGHTGREEN_EX
 
-        self.RequestLimitPerProxy = 10
-
 
         self.session = requests.Session()
         self.session.proxies = {
@@ -46,82 +44,19 @@ class CategoryScrapper:
 
         return proxy,agent
 
-    def randomLimitPerProxy(self,From = int(os.environ['REQ_PER_PROXY_FLOOR']),To = int(os.environ['REQ_PER_PROXY_CEIL'])):
-        n = random.randint(From, To)
-        return n
 
     def scrap(self,CategoryID):
-        offers = dict()
-        totalOffers = 0
-        page = 1
-        requests = 0
-        self.RequestLimitPerProxy = self.randomLimitPerProxy()
         base_link = f"https://allegro.pl/kategoria/{CategoryID}"
-        proxy,agent = self.randomProxy()
+        proxy, agent = self.randomProxy()
         self.session.headers["User-Agent"] = agent
         self.session.proxies['http'] = proxy.replace("http", "https")
-        self.session.proxies['https'] = proxy.replace("http","https")
+        self.session.proxies['https'] = proxy.replace("http", "https")
 
-        if (int(os.environ['VERBOSE']) < 1):
-            print(f"{self.GREEN}Starting scrapping of {base_link}{self.RESET}")
+        link = f"{base_link}"
 
-        while True:
-            if(requests >= self.RequestLimitPerProxy):
-                requests = 0
-                self.RequestLimitPerProxy = self.randomLimitPerProxy()
-                proxy, agent = self.randomProxy()
-
-                if(int(os.environ['VERBOSE'])==1):
-                    print(f"{self.GRAY}Exceeded amount of requests per proxy. Randoming new proxy. > {proxy}{self.RESET}")
-
-
-                self.session.headers["User-Agent"] = agent
-                self.session.proxies['http'] = proxy.replace("http", "https")
-                self.session.proxies['https'] = proxy.replace("http", "https")
-
-            link = f"{base_link}"
-            try:
-                if(page > 1):
-                    link = f"{base_link}?p={page}"
-                    reqs = self.session.get(link, allow_redirects=False)
-
-                else:
-                    reqs = self.session.get(link, allow_redirects=True)
-                    base_link = reqs.url
-                if (reqs.status_code == 301 and page > 1) or page > 100:
-                    page -= 1
-                    print(f"{self.RED}[>] Found {page} pages of category {CategoryID}")
-                    break
-                else:
-                    if (int(os.environ['VERBOSE']) == 1):
-                        print(f"{self.GREEN}[{reqs.status_code}] Category link: {link}  > {self.session.proxies['https']} {page}{self.RESET}")
-                    soup = BeautifulSoup(reqs.text, 'html')
-
-                    offers = self.getOffers(soup,offers)
-                if (reqs.status_code == 429):
-                    print(reqs.headers)
-                if page == 1:
-                    try:
-                        totalOffers = self.getNumberOfOffers(soup)
-                    except:
-                        print(link)
-                    print(f"{self.GRAY}Found {totalOffers} offers{self.RESET}")
-
-                    #if(totalOffers/60 > 100):
-                        #print(totalOffers)
-
-
-            except Exception as e:
-                print(f"{self.RED}[FAILED] Category link: {link}  > {self.session.proxies['https']}/{self.session.headers['User-Agent']}{self.RESET}")
-                print(e)
-                print(traceback.print_tb(e.__traceback__))
-            page += 1
-            requests += 1
-
-        self.saveOffers(offers, CategoryID)
-        if(int(os.environ['VERBOSE']) == 0):
-            print(f"{self.LIGHT_GREEN}Retrieved {len(offers)}/{totalOffers}{self.RESET}")
-
+        reqs = self.session.get(link, allow_redirects=True)
+        soup = BeautifulSoup(reqs.text, 'lxml')
+        return soup
 
 
     def getNumberOfOffers(self,soup):
@@ -129,57 +64,3 @@ class CategoryScrapper:
             raise Exception("Soup cannot be None - use scrap method first")
         else:
             return int(soup.find("div", {"data-box-name": "Listing title"}).find("div").find("div").text.replace("oferta","ofert").replace("oferty","ofert").replace("ofert","").replace(" ",""))
-
-    def getJSON(self,soup):
-        if soup is None:
-            raise Exception("Soup cannot be None - use scrap method first")
-        else:
-            try:
-                data = json.loads(soup.find("script", {"data-serialize-box-name": "items-v3"}).string)
-                data = json.loads(data["__listing_StoreState_base"])
-            except:
-                data = json.loads(soup.find("script", {"data-serialize-box-name": "items-v3"}).string)
-                data = json.loads(data["__listing_StoreState_base-mobile"])
-            return data
-
-
-    def getOffers(self,soup,offers):
-        for i in self.getJSON(soup)['items']['elements']:
-            if 'id' in i:
-                if i["bidInfo"] and "nikt" not in i["bidInfo"].lower():
-                    transactions = int(i["bidInfo"].split(' ')[0])
-                else:
-                    transactions = 0
-
-                if i['id'] not in offers:
-                    offers[i['id']] = {'name': i['title']['text'],'stock':i['quantity'],'price':i['price']['normal']['amount'],'original-price':0,'transactions':transactions}
-        return offers
-
-
-    def saveOffers(self,offers,CategoryID):
-        fileName = f'tmp/offers-{CategoryID}.csv'
-        auctions = list()
-
-        for o in offers:
-            id = o
-            o = offers[o]
-            auctions.append([id, o['name'], o['original-price'], o['price'], CategoryID, o['stock'], o['transactions'],
-                             o['transactions']])
-        try:
-            with open(fileName, 'w', newline='') as myfile:
-                wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC,delimiter='\t')
-                wr.writerow(auctions)
-        except:
-            fileName = f'/tmp/offers-{CategoryID}.csv'
-            with open(fileName, 'w', newline='') as myfile:
-                wr = csv.writer(myfile, quoting=csv.QUOTE_NONNUMERIC, delimiter='\t')
-                wr.writerow(auctions)
-
-        print(f'{self.RED} Result exported to csv{self.RESET}')
-
-        db = DBManager()
-        db.saveOffers(f'{fileName}')
-        if os.path.isfile(fileName):
-            os.remove(fileName)
-
-        print(f'{self.GREEN} Result saved to DataBase{self.RESET}')
