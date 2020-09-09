@@ -9,7 +9,6 @@ import os
 from DBManager import DBManager
 import traceback
 import csv
-import lxml
 
 class CategoryScrapper:
     def __init__(self):

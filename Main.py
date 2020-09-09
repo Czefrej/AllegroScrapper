@@ -1,10 +1,6 @@
-import AllegroScrapper
 from DBManager import DBManager
 from AllegroCategoryScrapper import AllegroCategoryScrapper
-from multiprocessing import Pool
-import os
 from AllegroApi import AllegroApi
-import json
 
 db = None
 
