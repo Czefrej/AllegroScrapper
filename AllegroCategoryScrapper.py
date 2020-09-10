@@ -106,7 +106,7 @@ class CategoryAPIScrapper:
                 self.webScrapper.scrap(i['id'], self.session.proxies['https'])), "null"])
             print(f"{self.GREEN} [0-lev]{i}{self.RESET}")
             childCategories.append(i['id'])
-            print(f"{self.GREEN}{self.getChildCategories(i['id'], 1)}{self.RESET}")
+            # print(f"{self.GREEN}{self.getChildCategories(i['id'], 1)}{self.RESET}")
 
         with Pool(5) as p:
             p.map(self.getChildCategories, childCategories)
