@@ -7,6 +7,7 @@ import os
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
+from multiprocessing import Pool
 
 
 class CategoryAPIScrapper:
@@ -73,17 +74,21 @@ class CategoryAPIScrapper:
         try:
             x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
                                                "accept": "application/vnd.allegro.public.v1+json"})
+            response = x.json()['categories']
+
             self.requestsNumber += 1
         except:
             retrySucceded = False
             for retry in range(self.maxRetries):
                 time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
                 self.setNewProxy()
+                self.auth()
                 self.requestsNumber += 1
                 try:
                     x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
                                                        "Accept-Encoding": "br, gzip, deflate",
                                                        "accept": "application/vnd.allegro.public.v1+json"})
+                    response = x.json()['categories']
                     retrySucceded = True
                     break
                 except:
@@ -94,33 +99,41 @@ class CategoryAPIScrapper:
             else:
                 raise Exception("[ERROR] Couldn't access API.")
 
-        response = x.json()['categories']
+        childCategories = []
+
         for i in response:
             self.categories.append([i['id'], i['name'], self.webScrapper.getNumberOfOffers(
                 self.webScrapper.scrap(i['id'], self.session.proxies['https'])), "null"])
             print(f"{self.GREEN} [0-lev]{i}{self.RESET}")
+            childCategories.append(i['id'])
             print(f"{self.GREEN}{self.getChildCategories(i['id'], 1)}{self.RESET}")
+
+        with Pool(5) as p:
+            p.map(self.getChildCategories, childCategories)
+
         self.saveCategory()
 
-
-    def getChildCategories(self, id, lev):
+    def getChildCategories(self, id, lev=1):
         self.waitIfExceeded()
         categories = set()
         url = f"https://api.allegro.pl/sale/categories?parent.id={id}"
         try:
             x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
                                                "accept": "application/vnd.allegro.public.v1+json"})
+            response = x.json()['categories']
             self.requestsNumber += 1
         except:
             retrySucceded = False
             for retry in range(self.maxRetries):
                 time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
                 self.setNewProxy()
+                self.auth()
                 self.requestsNumber += 1
                 try:
                     x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
                                                        "Accept-Encoding": "br, gzip, deflate",
                                                        "accept": "application/vnd.allegro.public.v1+json"})
+                    response = x.json()['categories']
                     retrySucceded = True
                     break
                 except:
@@ -130,10 +143,9 @@ class CategoryAPIScrapper:
                 print(f'Retry to {url} succeeded.')
             else:
                 print("[ERROR] Couldn't access API.")
+                return False
 
-
-        response = x.json()
-        for i in response['categories']:
+        for i in response:
             tab = ""
             for x in range(lev):
                 tab += "\t"
