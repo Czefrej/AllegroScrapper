@@ -216,7 +216,10 @@ class CategoryWebScrapper:
         if soup is None:
             return 0
         else:
-            return int(
-                soup.find("div", {"data-box-name": "Listing title"}).find("div").find("div").text.replace("oferta",
-                                                                                                          "ofert").replace(
-                    "oferty", "ofert").replace("ofert", "").replace(" ", ""))
+            try:
+                return int(
+                    soup.find("div", {"data-box-name": "Listing title"}).find("div").find("div").text.replace("oferta",
+                                                                                                              "ofert").replace(
+                        "oferty", "ofert").replace("ofert", "").replace(" ", ""))
+            except:
+                return 0
