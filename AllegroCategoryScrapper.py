@@ -97,7 +97,7 @@ class CategoryAPIScrapper:
         response = x.json()['categories']
         for i in response:
             self.categories.append([i['id'], i['name'], self.webScrapper.getNumberOfOffers(
-                self.webScrapper.scrap(i, self.session.proxies['https'])), "null"])
+                self.webScrapper.scrap(i['id'], self.session.proxies['https'])), "null"])
             print(f"{self.GREEN} [0-lev]{i}{self.RESET}")
             print(f"{self.GREEN}{self.getChildCategories(i['id'], 1)}{self.RESET}")
         self.saveCategory()
@@ -140,7 +140,7 @@ class CategoryAPIScrapper:
             if (i is not None):
                 print(f"{tab}{self.GREEN} [{lev}-lev]{i}{self.RESET}")
                 self.categories.append([i['id'], str(i['name']), self.webScrapper.getNumberOfOffers(
-                    self.webScrapper.scrap(i, self.session.proxies['https'])), i['parent']['id']])
+                    self.webScrapper.scrap(i['id'], self.session.proxies['https'])), i['parent']['id']])
                 self.getChildCategories(i['id'], lev + 1)
 
     def waitIfExceeded(self):

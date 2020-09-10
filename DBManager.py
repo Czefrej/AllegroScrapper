@@ -114,7 +114,7 @@ class DBManager:
         sql = "INSERT INTO `category` (`id`,`name`,`estimated-amount`,`parent-id`) " \
               "SELECT `category-tmp`.`id`,`category-tmp`.`name`,`category-tmp`.`estimated-amount`,`category-tmp`.`parent-id` " \
               "FROM `category-tmp` " \
-              "ON DUPLICATE KEY UPDATE `category`.`name` = `category-tmp`.`name`, `category-tmp`.`estimated-amount`=`category`.`estimated-amount` ,`category`.`parent-id` = `category-tmp`.`parent-id`;"
+              "ON DUPLICATE KEY UPDATE `category`.`name` = `category-tmp`.`name`, `category`.`estimated-amount`=`category-tmp`.`estimated-amount` ,`category`.`parent-id` = `category-tmp`.`parent-id`;"
         mycursor.execute(sql)
         sql = "DELETE FROM `category-tmp` WHERE 1=1;"
         mycursor.execute(sql)
