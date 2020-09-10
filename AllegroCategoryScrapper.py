@@ -7,6 +7,7 @@ import os
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
+import multiprocessing as mp
 from multiprocessing import Pool
 
 
@@ -68,7 +69,6 @@ class CategoryAPIScrapper:
 
 
     def getCategories(self):
-        self.waitIfExceeded()
         categories = set()
         url = "https://api.allegro.pl/sale/categories"
         try:
@@ -104,17 +104,17 @@ class CategoryAPIScrapper:
         for i in response:
             self.categories.append([i['id'], i['name'], self.webScrapper.getNumberOfOffers(
                 self.webScrapper.scrap(i['id'], self.session.proxies['https'])), "null"])
-            print(f"{self.GREEN} [0-lev]{i}{self.RESET}")
+            print(f"{self.GREEN} [0-lev]{i['id']} - {i['name']}{self.RESET}")
             childCategories.append(i['id'])
             # print(f"{self.GREEN}{self.getChildCategories(i['id'], 1)}{self.RESET}")
 
-        with Pool(5) as p:
+        print(f"{self.GRAY}Starting {mp.cpu_count()} threads...{self.RESET}")
+        with Pool(mp.cpu_count()) as p:
             p.map(self.getChildCategories, childCategories)
 
         self.saveCategory()
 
     def getChildCategories(self, id, lev=1):
-        self.waitIfExceeded()
         categories = set()
         url = f"https://api.allegro.pl/sale/categories?parent.id={id}"
         try:
@@ -150,7 +150,7 @@ class CategoryAPIScrapper:
             for x in range(lev):
                 tab += "\t"
             if (i is not None):
-                print(f"{tab}{self.GREEN} [{lev}-lev]{i}{self.RESET}")
+                print(f"{tab}{self.GREEN} [{lev}-lev]{i['id']} - {i['name']}{self.RESET}")
                 self.categories.append([i['id'], str(i['name']), self.webScrapper.getNumberOfOffers(
                     self.webScrapper.scrap(i['id'], self.session.proxies['https'])), i['parent']['id']])
                 self.getChildCategories(i['id'], lev + 1)
