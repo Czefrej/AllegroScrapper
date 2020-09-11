@@ -108,14 +108,13 @@ class CategoryAPIScrapper:
             childCategories.append(i['id'])
             # print(f"{self.GREEN}{self.getChildCategories(i['id'], 1)}{self.RESET}")
 
+        self.saveCategory()
         print(f"{self.GRAY}Starting {mp.cpu_count()} threads...{self.RESET}")
         with Pool(mp.cpu_count()) as p:
-            p.map(self.getChildCategories, childCategories)
-
-        self.saveCategory()
+            p.map(self.getChildCategories, childCategories
+            self.saveCategory()
 
     def getChildCategories(self, id, lev=1):
-        categories = set()
         url = f"https://api.allegro.pl/sale/categories?parent.id={id}"
         try:
             x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
@@ -147,6 +146,8 @@ class CategoryAPIScrapper:
 
         for i in response:
             tab = ""
+            if (self.requestsNumber > 100):
+                self.saveCategory()
             for x in range(lev):
                 tab += "\t"
             if (i is not None):
@@ -154,6 +155,7 @@ class CategoryAPIScrapper:
                 self.categories.append([i['id'], str(i['name']), self.webScrapper.getNumberOfOffers(
                     self.webScrapper.scrap(i['id'], self.session.proxies['https'])), i['parent']['id']])
                 self.getChildCategories(i['id'], lev + 1)
+            self.requestsNumber += 1
 
     def waitIfExceeded(self):
         if (self.limit <= self.requestsNumber):
