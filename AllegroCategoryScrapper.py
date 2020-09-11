@@ -111,7 +111,7 @@ class CategoryAPIScrapper:
         self.saveCategory()
         print(f"{self.GRAY}Starting {mp.cpu_count()} threads...{self.RESET}")
         with Pool(mp.cpu_count()) as p:
-            p.map(self.getChildCategories, childCategories
+            p.map(self.getChildCategories, childCategories)
             self.saveCategory()
 
     def getChildCategories(self, id, lev=1):

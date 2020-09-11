@@ -5,7 +5,7 @@ import mysql.connector
 
 class DBManager:
     def __init__(self, tunnel=False):
-        self.host = "database-2.cluster-cj4ujco21i0x.eu-central-1.rds.amazonaws.com"
+        self.host = "allegrotradedb.proxy-cj4ujco21i0x.eu-central-1.rds.amazonaws.com"
         self.user = "admin"
         self.password = "xCNxyM9nf8pHyyCY"
         self.database = "sales-data"
