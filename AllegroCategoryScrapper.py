@@ -21,7 +21,7 @@ class CategoryAPIScrapper:
         self.retry_backoff_factor = 0.2
         self.categories = []
 
-        self.webScrapper = CategoryWebScrapper()
+        self.webScrapper = CategoryWebScrapper(db)
 
         self.GREEN = colorama.Fore.GREEN
         self.GRAY = colorama.Fore.LIGHTBLACK_EX
@@ -196,6 +196,9 @@ class CategoryWebScrapper:
         self.RED = colorama.Fore.RED
         self.LIGHT_GREEN = colorama.Fore.LIGHTGREEN_EX
 
+        self.maxRetries = 5
+        self.retry_backoff_factor = 0.2
+
         self.db = db
 
         self.session = requests.Session()
@@ -204,10 +207,6 @@ class CategoryWebScrapper:
             "https": "http://ypeokuao-1:9ui94tr5b0ac@2.56.101.179:80",
             "ftp": "10.10.1.10:3128"
         }
-
-        retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[502, 503, 504])
-        self.session.mount('http://', HTTPAdapter(max_retries=retries))
-        self.session.mount('https://', HTTPAdapter(max_retries=retries))
 
         self.session.headers = {
             "User-Agent": 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36',
@@ -229,9 +228,25 @@ class CategoryWebScrapper:
         link = f"{base_link}"
         try:
             reqs = self.session.get(link, allow_redirects=True)
-            soup = BeautifulSoup(reqs.text, 'html')
+            soup = BeautifulSoup(reqs.text, 'lxml')
         except:
-            print(f"{self.RED}[{reqs.status_code}] {reqs.url}{self.RESET}")
+            retrySucceded = False
+            for retry in range(self.maxRetries):
+                time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
+                self.setNewProxy()
+                try:
+                    reqs = self.session.get(link, allow_redirects=True)
+                    soup = BeautifulSoup(reqs.text, 'lxml')
+                    retrySucceded = True
+                    break
+                except:
+                    print(f'Failed {retry}/{self.maxRetries} retry to {link}')
+
+            if retrySucceded:
+                print(f'Retry to {link} succeeded.')
+            else:
+                print(f"{self.RED}[{reqs.status_code}] {reqs.url}{self.RESET}")
+                return False
         return soup
 
     def getNumberOfOffers(self, soup):
