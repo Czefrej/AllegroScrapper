@@ -21,8 +21,6 @@ class CategoryAPIScrapper:
         self.retry_backoff_factor = 0.2
         self.categories = []
 
-        self.webScrapper = CategoryWebScrapper(db)
-
         self.GREEN = colorama.Fore.GREEN
         self.GRAY = colorama.Fore.LIGHTBLACK_EX
         self.RESET = colorama.Fore.RESET
@@ -112,7 +110,6 @@ class CategoryAPIScrapper:
         print(f"{self.GRAY}Starting {mp.cpu_count()} threads...{self.RESET}")
         with Pool(5) as p:
             p.map(self.getChildCategories, childCategories)
-            self.saveCategory()
 
     def getChildCategories(self, id, lev=1):
         url = f"https://api.allegro.pl/sale/categories?parent.id={id}"
@@ -146,15 +143,13 @@ class CategoryAPIScrapper:
 
         for i in response:
             tab = ""
-            if (self.requestsNumber % 100) == 0:
-                self.saveCategory()
             for x in range(lev):
                 tab += "\t"
             if (i is not None):
                 print(f"{tab}{self.GREEN} [{lev}-lev]{i['id']} - {i['name']}{self.RESET}")
                 self.categories.append([i['id'], str(i['name']), 0, i['parent']['id']])
                 self.getChildCategories(i['id'], lev + 1)
-            self.requestsNumber += 1
+        self.saveCategory()
 
     def waitIfExceeded(self):
         if (self.limit <= self.requestsNumber):
@@ -184,77 +179,3 @@ class CategoryAPIScrapper:
             os.remove(fileName)
         print(f'{self.GREEN} Result saved to DataBase{self.RESET}')
         self.categories = []
-
-
-class CategoryWebScrapper:
-    def __init__(self, db):
-        self.GREEN = colorama.Fore.GREEN
-        self.GRAY = colorama.Fore.LIGHTBLACK_EX
-        self.RESET = colorama.Fore.RESET
-        self.RED = colorama.Fore.RED
-        self.LIGHT_GREEN = colorama.Fore.LIGHTGREEN_EX
-
-        self.maxRetries = 5
-        self.retry_backoff_factor = 0.2
-
-        self.db = db
-
-        self.session = requests.Session()
-        self.session.proxies = {
-            "http": "http://ypeokuao-1:9ui94tr5b0ac@2.56.101.179:80",
-            "https": "http://ypeokuao-1:9ui94tr5b0ac@2.56.101.179:80",
-            "ftp": "10.10.1.10:3128"
-        }
-
-        self.session.headers = {
-            "User-Agent": 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36',
-            "Accept-Encoding": "br, gzip, deflate",
-            "Accept": "test/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Referer": "http://www.google.com/"}
-        self.session.verify = True
-
-    def setNewProxy(self):
-        proxy = self.db.getProxyFromFIFO()
-        self.session.proxies['http'] = proxy.replace("http", "https")
-        self.session.proxies['https'] = proxy.replace("http", "https")
-
-    def scrap(self, CategoryID, proxy):
-        base_link = f"https://allegro.pl/kategoria/{CategoryID}"
-        self.session.proxies['http'] = proxy
-        self.session.proxies['https'] = proxy
-
-        link = f"{base_link}"
-        try:
-            reqs = self.session.get(link, allow_redirects=True)
-            soup = BeautifulSoup(reqs.text, 'lxml')
-        except:
-            retrySucceded = False
-            for retry in range(self.maxRetries):
-                time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
-                self.setNewProxy()
-                try:
-                    reqs = self.session.get(link, allow_redirects=True)
-                    soup = BeautifulSoup(reqs.text, 'lxml')
-                    retrySucceded = True
-                    break
-                except:
-                    print(f'Failed {retry}/{self.maxRetries} retry to {link}')
-
-            if retrySucceded:
-                print(f'Retry to {link} succeeded.')
-            else:
-                print(f"{self.RED}[{reqs.status_code}] {reqs.url}{self.RESET}")
-                return False
-        return soup
-
-    def getNumberOfOffers(self, soup):
-        if soup is None:
-            return 0
-        else:
-            try:
-                return int(
-                    soup.find("div", {"data-box-name": "Listing title"}).find("div").find("div").text.replace("oferta",
-                                                                                                              "ofert").replace(
-                        "oferty", "ofert").replace("ofert", "").replace(" ", ""))
-            except:
-                return 0
