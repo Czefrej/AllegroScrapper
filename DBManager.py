@@ -81,6 +81,7 @@ class DBManager:
         sql = "SELECT randomProxy();"
         mycursor.execute(sql)
         myresult = mycursor.fetchall()
+        database.commit()
         mycursor.close()
         database.close()
 
@@ -97,6 +98,7 @@ class DBManager:
         sql = 'SELECT getProxy()'
         mycursor.execute(sql)
         result = mycursor.fetchone()
+        database.commit()
         mycursor.close()
         database.close()
 
@@ -149,11 +151,11 @@ class DBManager:
     def getAPICredentials(self):
         database = self.openConnection()
         mycursor = database.cursor()
-        mycursor.execute("SELECT getAPICredentials()")
+        mycursor.execute("SELECT getAPICredentials();")
         result = mycursor.fetchone()
+        database.commit()
         mycursor.close()
         database.close()
-
         if len(result) > 0:
             return result[0]
         else:

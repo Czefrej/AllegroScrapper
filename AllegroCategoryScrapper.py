@@ -57,6 +57,7 @@ class CategoryAPIScrapper:
         encodedStr = str(base64.b64encode(authToken.encode("utf-8")), "utf-8")
 
         self.setNewProxy()
+
         print(self.session.proxies)
         response = self.session.post(url, headers={"Authorization": f"Basic {encodedStr}"})
         try:
@@ -188,12 +189,14 @@ class CategoryAPIScrapper:
 
 
 class CategoryWebScrapper:
-    def __init__(self):
+    def __init__(self, db):
         self.GREEN = colorama.Fore.GREEN
         self.GRAY = colorama.Fore.LIGHTBLACK_EX
         self.RESET = colorama.Fore.RESET
         self.RED = colorama.Fore.RED
         self.LIGHT_GREEN = colorama.Fore.LIGHTGREEN_EX
+
+        self.db = db
 
         self.session = requests.Session()
         self.session.proxies = {
@@ -212,6 +215,11 @@ class CategoryWebScrapper:
             "Accept": "test/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Referer": "http://www.google.com/"}
         self.session.verify = True
+
+    def setNewProxy(self):
+        proxy = self.db.getProxyFromFIFO()
+        self.session.proxies['http'] = proxy.replace("http", "https")
+        self.session.proxies['https'] = proxy.replace("http", "https")
 
     def scrap(self, CategoryID, proxy):
         base_link = f"https://allegro.pl/kategoria/{CategoryID}"
