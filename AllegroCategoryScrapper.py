@@ -103,15 +103,14 @@ class CategoryAPIScrapper:
         childCategories = []
 
         for i in response:
-            self.categories.append([i['id'], i['name'], self.webScrapper.getNumberOfOffers(
-                self.webScrapper.scrap(i['id'], self.session.proxies['https'])), "null"])
+            self.categories.append([i['id'], i['name'], 0, "null"])
             print(f"{self.GREEN} [0-lev]{i['id']} - {i['name']}{self.RESET}")
             childCategories.append(i['id'])
             # print(f"{self.GREEN}{self.getChildCategories(i['id'], 1)}{self.RESET}")
 
         self.saveCategory()
         print(f"{self.GRAY}Starting {mp.cpu_count()} threads...{self.RESET}")
-        with Pool(mp.cpu_count()) as p:
+        with Pool(5) as p:
             p.map(self.getChildCategories, childCategories)
             self.saveCategory()
 
@@ -147,14 +146,13 @@ class CategoryAPIScrapper:
 
         for i in response:
             tab = ""
-            if (self.requestsNumber > 100):
+            if (self.requestsNumber % 100) == 0:
                 self.saveCategory()
             for x in range(lev):
                 tab += "\t"
             if (i is not None):
                 print(f"{tab}{self.GREEN} [{lev}-lev]{i['id']} - {i['name']}{self.RESET}")
-                self.categories.append([i['id'], str(i['name']), self.webScrapper.getNumberOfOffers(
-                    self.webScrapper.scrap(i['id'], self.session.proxies['https'])), i['parent']['id']])
+                self.categories.append([i['id'], str(i['name']), 0, i['parent']['id']])
                 self.getChildCategories(i['id'], lev + 1)
             self.requestsNumber += 1
 

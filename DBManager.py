@@ -138,7 +138,7 @@ class DBManager:
     def getCategories(self):
         database = self.openConnection()
         mycursor = database.cursor()
-        sql = "SELECT id from category WHERE id NOT IN (SELECT `parent-id` FROM category GROUP BY `parent-id`)"
+        sql = "SELECT id from category WHERE id NOT IN (SELECT `parent-id` FROM category)"
         mycursor.execute(sql)
         myresult = mycursor.fetchall()
         mycursor.close()

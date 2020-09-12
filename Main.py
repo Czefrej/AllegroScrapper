@@ -1,6 +1,7 @@
 from DBManager import DBManager
 from AllegroApi import AllegroApi
 from AllegroCategoryScrapper import CategoryAPIScrapper
+import json
 db = None
 
 def Main(event,context=None):
@@ -11,8 +12,14 @@ def Main(event,context=None):
         print("Connected!")
         allegro = AllegroApi(db)
         allegro.auth()
-        response = allegro.getOffers(event['Records'][0]['body'])
+        print(event['Records'][0]['body'])
+        try:
+            data = json.loads(event['Records'][0]['body'])
 
+        except:
+            data = event['Records'][0]['body']
+
+        response = allegro.getOffers(data['id'], data['priceFrom'], data['priceTo'])
         return response
 
 def ScrapCategory(event = None,context=None):

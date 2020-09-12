@@ -9,11 +9,14 @@ from requests.packages.urllib3.util.retry import Retry
 import csv
 import time
 import json
+import boto3
 
 
 class AllegroApi:
 
     def __init__(self, db):
+        sqsResource = boto3.resource('sqs')
+        self.queue = sqsResource.get_queue_by_name(QueueName="CategoryQueue.fifo")
         self.APIAccessToken = None
         self.GREEN = colorama.Fore.GREEN
         self.GRAY = colorama.Fore.LIGHTBLACK_EX
@@ -27,7 +30,7 @@ class AllegroApi:
         self.saveSize = 0
         self.categories = []
         self.db = db
-
+        self.failedTasks = []
 
         self.session = requests.Session()
 
@@ -75,7 +78,7 @@ class AllegroApi:
         self.session.proxies['http'] = proxy.replace("http", "https")
         self.session.proxies['https'] = proxy.replace("http", "https")
 
-    def getOffers(self, CategoryID):
+    def getOffers(self, CategoryID, PriceFrom=None, PriceTo=None):
         start_time = time.time()
         offset = 0
         requests = 0
@@ -88,8 +91,14 @@ class AllegroApi:
                 print(f"Finished {len(offersDict)} in {time.time() - start_time} ms")
                 self.saveOffers(offersDict, CategoryID)
                 break
+            url = f"https://api.allegro.pl/offers/listing?category.id={CategoryID}&offset={offset}&sort=+price"
 
-            url = f"https://api.allegro.pl/offers/listing?category.id={CategoryID}&offset={offset}"
+            if (PriceFrom is not None):
+                url = f"{url}&price.from={PriceFrom}"
+
+            if (PriceTo is not None):
+                url = f"{url}&price.to={PriceTo}"
+
             try:
                 x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
                                                    "Accept-Encoding": "br, gzip, deflate",
@@ -97,7 +106,7 @@ class AllegroApi:
             except:
                 retrySucceded = False
                 for retry in range(self.maxRetries):
-                    time.sleep(self.retry_backoff_factor* (2**(retry)-1))
+                    time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
                     self.setNewProxy()
                     try:
                         x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
@@ -120,6 +129,7 @@ class AllegroApi:
                     totalCount = response['searchMeta']['totalCount']
                 if 'items' in response:
                     offersInIteration = response['items']['promoted'] + response['items']['regular']
+                    self.lastCompletedTask = offersInIteration[len(offersInIteration) - 1]['id']
                     totalCount = response['searchMeta']['totalCount']
                 else:
                     print(f"Finished {len(offersDict)} in {time.time() - start_time} ms")
@@ -133,15 +143,36 @@ class AllegroApi:
                     else:
                         popularity = 0
                     offersDict[i['id']] = (
-                    {'name': i['name'], 'stock': i['stock']['available'], 'price': i['sellingMode']['price']['amount'],
-                     'original-price': i['sellingMode']['price']['amount'], 'transactions': popularity})
+                        {'name': i['name'], 'stock': i['stock']['available'],
+                         'price': i['sellingMode']['price']['amount'],
+                         'original-price': i['sellingMode']['price']['amount'], 'transactions': popularity})
             else:
-                return {
+                self.failedTasks.append(url)
+                print(url)
+                self.auth()
+                self.setNewProxy()
+                continue
+                # return {
+                #
+                #     'statusCode': x.status_code,
+                #     'body': json.dumps(x.text),
+                #     'url': url
+                # }
+        print(self.failedTasks)
+        print(f"{offersDict[self.lastCompletedTask]}")
 
-                    'statusCode': x.status_code,
-                    'body': json.dumps(x.text),
-                    'url': url
-                }
+        if (offset > 0):
+            PriceFromFilter = offersDict[self.lastCompletedTask]
+            if (PriceFrom == offersDict[self.lastCompletedTask]['original-price']):
+                PriceFromFilter += 0.01
+
+            entry = [{'Id': str(self.lastCompletedTask),
+                      'MessageBody': json.dumps({'id': str(CategoryID),
+                                                 "priceFrom": PriceFromFilter,
+                                                 "priceTo": None}),
+                      'MessageGroupId': str(self.lastCompletedTask)}]
+            response = self.queue.send_messages(Entries=entry)
+
         return {
 
             'statusCode': 200,
