@@ -7,18 +7,13 @@ db = None
 def Main(event,context=None):
     if __name__ == "__main__" or __name__ == "Main":
         print(event['Records'][0]['body'])
-        print('Connecting to database....')
-        db = DBManager()
-        print("Connected!")
-        allegro = AllegroApi(db)
-        allegro.auth()
-        print(event['Records'][0]['body'])
         try:
             data = json.loads(event['Records'][0]['body'])
 
         except:
             data = event['Records'][0]['body']
-
+        allegro = AllegroApi(data['proxies'],data['apis'])
+        allegro.auth()
         response = allegro.getOffers(data['id'], data['priceFrom'], data['priceTo'])
         return response
 

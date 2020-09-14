@@ -2,8 +2,8 @@ import requests
 import base64
 import colorama
 import os
+import random
 import time
-from DBManager import DBManager
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import csv
@@ -14,9 +14,10 @@ import boto3
 
 class AllegroApi:
 
-    def __init__(self, db):
+    def __init__(self, proxies,APICredentials):
         sqsResource = boto3.resource('sqs')
-        self.queue = sqsResource.get_queue_by_name(QueueName="CategoryQueue.fifo")
+        self.categoryQueue = sqsResource.get_queue_by_name(QueueName="CategoryQueue.fifo")
+        self.databaseQueue = sqsResource.get_queue_by_name(QueueName="TradeDataSavingQueue.fifo")
         self.APIAccessToken = None
         self.GREEN = colorama.Fore.GREEN
         self.GRAY = colorama.Fore.LIGHTBLACK_EX
@@ -30,7 +31,10 @@ class AllegroApi:
         self.saveTreshold = 60000
         self.saveSize = 0
         self.categories = []
-        self.db = db
+
+        self.proxies = proxies
+        self.APICredentials = APICredentials
+
         self.failedTasks = []
 
         self.session = requests.Session()
@@ -50,10 +54,8 @@ class AllegroApi:
     def auth(self, ClientId="cb1aca5e5fbb497bb237619d7a2f9e1b",
              secret="ZIoIulPVa2aaf4gCRckBuha4DI7OL9c9ceByzMj4sg3U54tVdjOMLtPzRlZoJHj5"):
 
-        apiCredentials = self.db.getAPICredentials()
+        apiCredentials = random.choice(self.APICredentials)
         if apiCredentials is not None:
-            apiCredentials = apiCredentials.split(',')
-            print(apiCredentials)
             ClientId = apiCredentials[0]
             secret = apiCredentials[1]
         else:
@@ -75,7 +77,7 @@ class AllegroApi:
         self.APIAccessToken = response["access_token"]
 
     def setNewProxy(self):
-        proxy = self.db.getProxyFromFIFO()
+        proxy = random.choice(self.proxies)[0]
         self.session.proxies['http'] = proxy.replace("http", "https")
         self.session.proxies['https'] = proxy.replace("http", "https")
 
@@ -173,9 +175,9 @@ class AllegroApi:
                 entry = [{'Id': str(self.lastCompletedTask),
                           'MessageBody': json.dumps({'id': str(CategoryID),
                                                      "priceFrom": PriceFromFilter,
-                                                     "priceTo": None}),
+                                                     "priceTo": None,"apis": self.APICredentials,"proxies":self.proxies}),
                           'MessageGroupId': str(self.lastCompletedTask)}]
-                response = self.queue.send_messages(Entries=entry)
+                response = self.categoryQueue.send_messages(Entries=entry)
 
         return {
 
@@ -184,6 +186,45 @@ class AllegroApi:
         }
 
     def saveOffers(self, offers, CategoryID):
+        dataChunk = 60
+        maxEntries = 10
+        idsToDelete = []
+        auctions = []
+        entries = []
+        c = 0
+        messages = 0
+        for o in offers:
+            id = o
+            o = offers[id]
+            idsToDelete.append(id)
+            auctions.append(
+                {'id': id, 'name': o['name'], 'originalPrice': o['original-price'], 'price': o['price'],
+                 "stock": o['stock'], "transactions": o['transactions']})
+            c += 1
+            if(c == dataChunk):
+                entries.append({'Id': str(f"{CategoryID}-{messages}"),
+                                'MessageBody': json.dumps({'id': str(CategoryID),
+                                                           'data': auctions}),
+                                'MessageGroupId': str(CategoryID)})
+                messages += 1
+                auctions = []
+                c = 0
+
+            if(len(entries) == maxEntries):
+                self.databaseQueue.send_messages(Entries=entries)
+                entries = []
+
+        if(len(auctions) != 0):
+            entries.append({'Id': str(f"{CategoryID}-{messages}"),
+                            'MessageBody': json.dumps({'id': str(CategoryID),
+                                                       'data': auctions}),
+                            'MessageGroupId': str(CategoryID)})
+
+            messages+=1
+        if(len(entries) != 0):
+            response = self.databaseQueue.send_messages(Entries=entries)
+
+        '''
         fileName = f'/tmp/offers-{CategoryID}.csv'
         auctions = list()
 
@@ -210,7 +251,7 @@ class AllegroApi:
         self.db.saveOffers(f'{fileName}')
         if os.path.isfile(fileName):
             os.remove(fileName)
-
-        print(f'{self.GREEN} Result saved to DataBase{self.RESET}')
+        '''
+        print(f'{self.GREEN} Result sent to DataBase Queue{self.RESET}')
 
 
