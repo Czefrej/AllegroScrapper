@@ -23,6 +23,7 @@ class AllegroApi:
         self.RESET = colorama.Fore.RESET
         self.RED = colorama.Fore.RED
 
+        self.lastCompletedTask = None
         self.retry_backoff_factor = 0.2
         self.maxRetries = 5
         self.limit = 9000
@@ -129,7 +130,8 @@ class AllegroApi:
                     totalCount = response['searchMeta']['totalCount']
                 if 'items' in response:
                     offersInIteration = response['items']['promoted'] + response['items']['regular']
-                    self.lastCompletedTask = offersInIteration[len(offersInIteration) - 1]['id']
+                    if (len(offersInIteration) > 0):
+                        self.lastCompletedTask = offersInIteration[len(offersInIteration) - 1]['id']
                     totalCount = response['searchMeta']['totalCount']
                 else:
                     print(f"Finished {len(offersDict)} in {time.time() - start_time} ms")
@@ -159,19 +161,21 @@ class AllegroApi:
                 #     'url': url
                 # }
         print(self.failedTasks)
-        print(f"{offersDict[self.lastCompletedTask]}")
 
-        if (offset > 0):
-            PriceFromFilter = offersDict[self.lastCompletedTask]
-            if (PriceFrom == offersDict[self.lastCompletedTask]['original-price']):
-                PriceFromFilter += 0.01
+        if self.lastCompletedTask is not None:
+            print(f"{offersDict[self.lastCompletedTask]}")
 
-            entry = [{'Id': str(self.lastCompletedTask),
-                      'MessageBody': json.dumps({'id': str(CategoryID),
-                                                 "priceFrom": PriceFromFilter,
-                                                 "priceTo": None}),
-                      'MessageGroupId': str(self.lastCompletedTask)}]
-            response = self.queue.send_messages(Entries=entry)
+            if (offset > 0):
+                PriceFromFilter = float(offersDict[self.lastCompletedTask]['original-price'])
+                if (PriceFrom == offersDict[self.lastCompletedTask]['original-price']):
+                    PriceFromFilter += 0.01
+
+                entry = [{'Id': str(self.lastCompletedTask),
+                          'MessageBody': json.dumps({'id': str(CategoryID),
+                                                     "priceFrom": PriceFromFilter,
+                                                     "priceTo": None}),
+                          'MessageGroupId': str(self.lastCompletedTask)}]
+                response = self.queue.send_messages(Entries=entry)
 
         return {
 

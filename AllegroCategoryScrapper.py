@@ -149,7 +149,8 @@ class CategoryAPIScrapper:
                 print(f"{tab}{self.GREEN} [{lev}-lev]{i['id']} - {i['name']}{self.RESET}")
                 self.categories.append([i['id'], str(i['name']), 0, i['parent']['id']])
                 self.getChildCategories(i['id'], lev + 1)
-        self.saveCategory()
+        if (lev == 1):
+            self.saveCategory()
 
     def waitIfExceeded(self):
         if (self.limit <= self.requestsNumber):
