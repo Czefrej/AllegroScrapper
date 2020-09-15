@@ -14,7 +14,7 @@ def Main(event,context=None):
             data = event['Records'][0]['body']
         allegro = AllegroApi(data['proxies'],data['apis'])
         allegro.auth()
-        response = allegro.getOffers(data['id'], data['priceFrom'], data['priceTo'])
+        response = allegro.searchForOffersRecurrently(data['id'], data['priceFrom'], data['priceTo'])
         return response
 
 def ScrapCategory(event = None,context=None):

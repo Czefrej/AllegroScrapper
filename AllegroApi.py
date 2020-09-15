@@ -81,128 +81,118 @@ class AllegroApi:
         self.session.proxies['http'] = proxy.replace("http", "https")
         self.session.proxies['https'] = proxy.replace("http", "https")
 
-    def getOffers(self, CategoryID, PriceFrom=None, PriceTo=None):
-        start_time = time.time()
-        offset = 0
-        requests = 0
-        totalCount = 0
-        # price.from price.to
-        offersDict = dict()
-        offersInIteration = None
-        while True:
-            if (offset == 6000):
-                print(f"Finished {len(offersDict)} in {time.time() - start_time} ms")
-                self.saveOffers(offersDict, CategoryID)
-                break
-            url = f"https://api.allegro.pl/offers/listing?category.id={CategoryID}&offset={offset}&sort=+price"
+    def getOffers(self,CategoryID,offset=0,PriceFrom=None,PriceTo=None):
+        offersList = []
+        offersInIteration = []
+        url = f"https://api.allegro.pl/offers/listing?category.id={CategoryID}&offset={offset}&sort=+price"
 
-            if (PriceFrom is not None):
-                url = f"{url}&price.from={PriceFrom}"
+        if (PriceFrom is not None):
+            url = f"{url}&price.from={PriceFrom}"
 
-            if (PriceTo is not None):
-                url = f"{url}&price.to={PriceTo}"
+        if (PriceTo is not None):
+            url = f"{url}&price.to={PriceTo}"
 
-            try:
-                x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
-                                                   "Accept-Encoding": "br, gzip, deflate",
-                                                   "accept": "application/vnd.allegro.public.v1+json"})
-            except:
-                retrySucceded = False
-                for retry in range(self.maxRetries):
-                    time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
-                    self.setNewProxy()
-                    try:
-                        x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
-                                                           "Accept-Encoding": "br, gzip, deflate",
-                                                           "accept": "application/vnd.allegro.public.v1+json"})
-                        retrySucceded = True
-                        break
-                    except:
-                        print(f'Failed {retry}/{self.maxRetries} retry to {url}')
-
-                if retrySucceded:
-                    print(f'Retry to {url} succeeded.')
-                else:
-                    continue
-
-
-            if (x.status_code == 200):
-                response = x.json()
-                if (requests == 0):
-                    totalCount = response['searchMeta']['totalCount']
-                if 'items' in response:
-                    offersInIteration = response['items']['promoted'] + response['items']['regular']
-                    if (len(offersInIteration) > 0):
-                        self.lastCompletedTask = offersInIteration[len(offersInIteration) - 1]['id']
-                    totalCount = response['searchMeta']['totalCount']
-                else:
-                    print(f"Finished {len(offersDict)} in {time.time() - start_time} ms")
-                    self.saveOffers(offersDict, CategoryID)
-                    break
-                offset += 60
-
-                for i in offersInIteration:
-                    if 'popularity' in i['sellingMode']:
-                        popularity = i['sellingMode']['popularity']
-                    else:
-                        popularity = 0
-                    offersDict[i['id']] = (
-                        {'name': i['name'], 'stock': i['stock']['available'],
-                         'price': i['sellingMode']['price']['amount'],
-                         'original-price': i['sellingMode']['price']['amount'], 'transactions': popularity})
-            else:
-                self.failedTasks.append(url)
-                print(url)
-                self.auth()
+        try:
+            x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
+                                               "Accept-Encoding": "br, gzip, deflate",
+                                               "accept": "application/vnd.allegro.public.v1+json"})
+        except:
+            retrySucceded = False
+            for retry in range(self.maxRetries):
+                time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
                 self.setNewProxy()
-                continue
-                # return {
-                #
-                #     'statusCode': x.status_code,
-                #     'body': json.dumps(x.text),
-                #     'url': url
-                # }
+                try:
+                    x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
+                                                       "Accept-Encoding": "br, gzip, deflate",
+                                                       "accept": "application/vnd.allegro.public.v1+json"})
+                    retrySucceded = True
+                    break
+                except:
+                    print(f'Failed {retry}/{self.maxRetries} retry to {url}')
+
+            if retrySucceded:
+                print(f'Retry to {url} succeeded.')
+            else:
+                print(f'Retry to {url} failed.')
+                self.failedTasks.append(url)
+
+        if (x.status_code == 200):
+            response = x.json()
+            if 'items' in response:
+                offersInIteration = response['items']['promoted'] + response['items']['regular']
+
+            for i in offersInIteration:
+                if 'popularity' in i['sellingMode']:
+                    popularity = i['sellingMode']['popularity']
+                else:
+                    popularity = 0
+                offersList.append(
+                    {'id':i['id'],'name': i['name'], 'stock': i['stock']['available'],
+                     'price': i['sellingMode']['price']['amount'],
+                     'original-price': i['sellingMode']['price']['amount'], 'transactions': popularity})
+        else:
+            self.failedTasks.append(url)
+            print(url)
+            self.auth()
+            self.setNewProxy()
+
+        return offersList
+    def searchForOffersRecurrently(self,CategoryID, PriceFrom=0, PriceTo=None):
+        if(PriceFrom == 0):
+            notFullResponseCount = 0
+            currentPrice = PriceFrom
+            while True:
+                offersList = self.getOffers(CategoryID,0,currentPrice,PriceTo)
+                if (len(offersList) < 5000):
+                    if(notFullResponseCount>3):
+                        break
+                    notFullResponseCount += 1
+                if (len(offersList) > 0):
+                    newPrice = float(offersList[0]['original-price'])
+                    if (currentPrice == newPrice):
+                        newPrice += 0.01
+                    currentPrice = newPrice
+                    entry = [{'Id': str(f"{CategoryID}x{offersList[0]['id']}"),
+                              'MessageBody': json.dumps({'id': str(CategoryID),
+                                                         "priceFrom": currentPrice,
+                                                         "priceTo": None, "apis": self.APICredentials,
+                                                         "proxies": self.proxies}),
+                              'MessageGroupId': str(CategoryID)}]
+                    response = self.categoryQueue.send_messages(Entries=entry)
+                else:
+                    break
+        joinedOfferList = []
+        offset = 0
+        for i in range (100):
+            offersList = self.getOffers(CategoryID,offset,PriceFrom,PriceTo)
+            if(len(offersList) > 0):
+                joinedOfferList= joinedOfferList+offersList
+            else:
+                break
+            offset+=60
+        if(len(joinedOfferList)>0):
+            self.saveOffers(joinedOfferList, CategoryID)
         print(self.failedTasks)
-
-        if self.lastCompletedTask is not None:
-            print(f"{offersDict[self.lastCompletedTask]}")
-
-            if (offset > 0):
-                PriceFromFilter = float(offersDict[self.lastCompletedTask]['original-price'])
-                if (PriceFrom == offersDict[self.lastCompletedTask]['original-price']):
-                    PriceFromFilter += 0.01
-
-                entry = [{'Id': str(self.lastCompletedTask),
-                          'MessageBody': json.dumps({'id': str(CategoryID),
-                                                     "priceFrom": PriceFromFilter,
-                                                     "priceTo": None,"apis": self.APICredentials,"proxies":self.proxies}),
-                          'MessageGroupId': str(self.lastCompletedTask)}]
-                response = self.categoryQueue.send_messages(Entries=entry)
-
         return {
 
             'statusCode': 200,
-            'body': json.dumps(f'Done, {totalCount}/{len(offersDict)}')
+            'body': json.dumps(f'Done, {len(joinedOfferList)}')
         }
 
     def saveOffers(self, offers, CategoryID):
         dataChunk = 60
         maxEntries = 10
-        idsToDelete = []
         auctions = []
         entries = []
         c = 0
         messages = 0
         for o in offers:
-            id = o
-            o = offers[id]
-            idsToDelete.append(id)
             auctions.append(
-                {'id': id, 'name': o['name'], 'originalPrice': o['original-price'], 'price': o['price'],
+                {'id': o['id'], 'name': o['name'], 'originalPrice': o['original-price'], 'price': o['price'],
                  "stock": o['stock'], "transactions": o['transactions']})
             c += 1
             if(c == dataChunk):
-                entries.append({'Id': str(f"{CategoryID}-{messages}"),
+                entries.append({'Id': str(f"{CategoryID}x{messages}"),
                                 'MessageBody': json.dumps({'id': str(CategoryID),
                                                            'data': auctions}),
                                 'MessageGroupId': str(CategoryID)})
@@ -224,34 +214,6 @@ class AllegroApi:
         if(len(entries) != 0):
             response = self.databaseQueue.send_messages(Entries=entries)
 
-        '''
-        fileName = f'/tmp/offers-{CategoryID}.csv'
-        auctions = list()
-
-        for o in offers:
-            id = o
-            o = offers[o]
-            auctions.append([id, o['name'], o['original-price'], o['price'], CategoryID, o['stock'], o['transactions'],
-                             o['transactions']])
-        try:
-            with open(fileName, 'w', newline='', encoding='utf-8') as myfile:
-                wr = csv.writer(myfile, quoting=csv.QUOTE_MINIMAL, delimiter='\t')
-                for a in auctions:
-                    wr.writerow(a)
-        except Exception as e:
-            print(e)
-            fileName = f'tmp/offers-{CategoryID}.csv'
-            with open(fileName, 'w', newline='', encoding='utf-8') as myfile:
-                wr = csv.writer(myfile, quoting=csv.QUOTE_MINIMAL, delimiter='\t')
-                for a in auctions:
-                    wr.writerow(a)
-
-        print(f'{self.RED} Result exported to csv{self.RESET}')
-
-        self.db.saveOffers(f'{fileName}')
-        if os.path.isfile(fileName):
-            os.remove(fileName)
-        '''
         print(f'{self.GREEN} Result sent to DataBase Queue{self.RESET}')
 
 
