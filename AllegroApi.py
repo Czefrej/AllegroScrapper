@@ -117,7 +117,12 @@ class AllegroApi:
                 self.failedTasks.append(url)
 
         if (x.status_code == 200):
-            response = x.json()
+            try:
+                response = x.json()
+            except Exception as e:
+                print(e)
+                print(f"ERROR {x.text}")
+
             if 'items' in response:
                 offersInIteration = response['items']['promoted'] + response['items']['regular']
 
@@ -137,30 +142,77 @@ class AllegroApi:
             self.setNewProxy()
 
         return offersList
-    def searchForOffersRecurrently(self,CategoryID, PriceFrom=0, PriceTo=None):
-        if(PriceFrom == 0):
+
+    def searchForOffersRecurrently(self, CategoryID, PriceFrom=0, PriceTo=None):
+
+        try:
+            self.auth()
+        except:
+            retrySucceded = False
+            for retry in range(self.maxRetries):
+                try:
+                    self.auth()
+                    retrySucceded = True
+                except:
+                    print(f'Failed to connect to API {retry}/{self.maxRetries}')
+            if not retrySucceded:
+                return {
+                    'statusCode': 429,
+                    'body': json.dumps(f'Failed to connect to API')
+                }
+
+        if (PriceFrom == 0):
             notFullResponseCount = 0
             currentPrice = PriceFrom
+            offset = 5940
+            step = 60
+            priceStep = 0.01
+            total = 0
+            skip = False
             while True:
-                offersList = self.getOffers(CategoryID,0,currentPrice,PriceTo)
-                if (len(offersList) < 5000):
-                    if(notFullResponseCount>3):
+                offersList = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
+
+                if (len(offersList) == 0):
+                    while True:
+                        offset -= step
+                        if (offset < 0):
+                            skip = True
+                            break
+                        offersList = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
+                        if (len(offersList) > 0):
+                            break
+
+                    if (notFullResponseCount > 3):
                         break
                     notFullResponseCount += 1
+                if skip:
+                    break
+
                 if (len(offersList) > 0):
-                    newPrice = float(offersList[0]['original-price'])
+                    newPrice = float(offersList[len(offersList) - 1]['original-price'])
+                    if (newPrice < currentPrice):
+                        priceStep += 1
                     if (currentPrice == newPrice):
-                        newPrice += 0.01
+                        newPrice += priceStep
+
                     currentPrice = newPrice
-                    entry = [{'Id': str(f"{CategoryID}x{offersList[0]['id']}"),
+
+                    total += len(offersList) + offset
+
+                    print(f"Found {len(offersList) + offset} at price < {currentPrice} ")
+
+                    entry = [{'Id': str(f"{CategoryID}x{offersList[len(offersList) - 1]['id']}"),
                               'MessageBody': json.dumps({'id': str(CategoryID),
                                                          "priceFrom": currentPrice,
                                                          "priceTo": None, "apis": self.APICredentials,
                                                          "proxies": self.proxies}),
-                              'MessageGroupId': str(CategoryID)}]
+                              'MessageGroupId': str(f"{CategoryID}x{offersList[len(offersList) - 1]['id']}")}]
                     response = self.categoryQueue.send_messages(Entries=entry)
+
+
                 else:
                     break
+            print(f"Found {total} in total.")
         joinedOfferList = []
         offset = 0
         for i in range (100):
