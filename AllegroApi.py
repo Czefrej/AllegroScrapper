@@ -16,8 +16,10 @@ class AllegroApi:
 
     def __init__(self, proxies,APICredentials):
         sqsResource = boto3.resource('sqs')
+        s3 = boto3.resource('s3')
         self.categoryQueue = sqsResource.get_queue_by_name(QueueName="CategoryQueue.fifo")
         self.databaseQueue = sqsResource.get_queue_by_name(QueueName="TradeDataSavingQueue.fifo")
+        self.bucket = s3.Bucket('biteye')
         self.APIAccessToken = None
         self.GREEN = colorama.Fore.GREEN
         self.GRAY = colorama.Fore.LIGHTBLACK_EX
@@ -65,7 +67,6 @@ class AllegroApi:
         authToken = f"{ClientId}:{secret}"
         encodedStr = str(base64.b64encode(authToken.encode("utf-8")), "utf-8")
 
-        self.setNewProxy()
         print(self.session.proxies)
         response = self.session.post(url, headers={"Authorization": f"Basic {encodedStr}"})
         try:
@@ -81,9 +82,15 @@ class AllegroApi:
         self.session.proxies['http'] = proxy.replace("http", "https")
         self.session.proxies['https'] = proxy.replace("http", "https")
 
-    def getOffers(self,CategoryID,offset=0,PriceFrom=None,PriceTo=None):
+    def sendAPIRequest(self, url):
+        return self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
+                                              "Accept-Encoding": "br, gzip, deflate",
+                                              "accept": "application/vnd.allegro.public.v1+json"})
+
+    def getOffers(self, CategoryID, offset=0, PriceFrom=None, PriceTo=None):
         offersList = []
         offersInIteration = []
+        available = 0
         url = f"https://api.allegro.pl/offers/listing?category.id={CategoryID}&offset={offset}&sort=+price"
 
         if (PriceFrom is not None):
@@ -92,30 +99,7 @@ class AllegroApi:
         if (PriceTo is not None):
             url = f"{url}&price.to={PriceTo}"
 
-        try:
-            x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
-                                               "Accept-Encoding": "br, gzip, deflate",
-                                               "accept": "application/vnd.allegro.public.v1+json"})
-        except:
-            retrySucceded = False
-            for retry in range(self.maxRetries):
-                time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
-                self.setNewProxy()
-                try:
-                    x = self.session.get(url, headers={"Authorization": f"Bearer {self.APIAccessToken}",
-                                                       "Accept-Encoding": "br, gzip, deflate",
-                                                       "accept": "application/vnd.allegro.public.v1+json"})
-                    retrySucceded = True
-                    break
-                except:
-                    print(f'Failed {retry}/{self.maxRetries} retry to {url}')
-
-            if retrySucceded:
-                print(f'Retry to {url} succeeded.')
-            else:
-                print(f'Retry to {url} failed.')
-                self.failedTasks.append(url)
-
+        x = self.retryOnFail(self.sendAPIRequest, "Failed to fetch data.", True, url)
         if (x.status_code == 200):
             try:
                 response = x.json()
@@ -125,6 +109,8 @@ class AllegroApi:
 
             if 'items' in response:
                 offersInIteration = response['items']['promoted'] + response['items']['regular']
+            if 'searchMeta' in response:
+                available = int(response['searchMeta']['availableCount'])
 
             for i in offersInIteration:
                 if 'popularity' in i['sellingMode']:
@@ -132,7 +118,7 @@ class AllegroApi:
                 else:
                     popularity = 0
                 offersList.append(
-                    {'id':i['id'],'name': i['name'], 'stock': i['stock']['available'],
+                    {'id': i['id'], 'name': i['name'], 'stock': i['stock']['available'],
                      'price': i['sellingMode']['price']['amount'],
                      'original-price': i['sellingMode']['price']['amount'], 'transactions': popularity})
         else:
@@ -141,26 +127,11 @@ class AllegroApi:
             self.auth()
             self.setNewProxy()
 
-        return offersList
+        return offersList, available
 
     def searchForOffersRecurrently(self, CategoryID, PriceFrom=0, PriceTo=None):
-
-        try:
-            self.auth()
-        except:
-            retrySucceded = False
-            for retry in range(self.maxRetries):
-                try:
-                    self.auth()
-                    retrySucceded = True
-                except:
-                    print(f'Failed to connect to API {retry}/{self.maxRetries}')
-            if not retrySucceded:
-                return {
-                    'statusCode': 429,
-                    'body': json.dumps(f'Failed to connect to API')
-                }
-
+        self.setNewProxy()
+        self.retryOnFail(self.auth, "Failed to Authenticate")
         if (PriceFrom == 0):
             notFullResponseCount = 0
             currentPrice = PriceFrom
@@ -170,17 +141,19 @@ class AllegroApi:
             total = 0
             skip = False
             while True:
-                offersList = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
+                offersList, available = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
 
                 if (len(offersList) == 0):
                     while True:
-                        offset -= step
                         if (offset < 0):
                             skip = True
                             break
-                        offersList = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
+                        offersList, available = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
+                        if (available == 0):
+                            break
                         if (len(offersList) > 0):
                             break
+                        offset = available - 1
 
                     if (notFullResponseCount > 3):
                         break
@@ -197,7 +170,7 @@ class AllegroApi:
 
                     currentPrice = newPrice
 
-                    total += len(offersList) + offset
+                    total += available
 
                     print(f"Found {len(offersList) + offset} at price < {currentPrice} ")
 
@@ -216,13 +189,13 @@ class AllegroApi:
         joinedOfferList = []
         offset = 0
         for i in range (100):
-            offersList = self.getOffers(CategoryID,offset,PriceFrom,PriceTo)
+            offersList, available = self.getOffers(CategoryID, offset, PriceFrom, PriceTo)
             if(len(offersList) > 0):
                 joinedOfferList= joinedOfferList+offersList
             else:
                 break
-            offset+=60
-        if(len(joinedOfferList)>0):
+            offset += 60
+        if (len(joinedOfferList) > 0):
             self.saveOffers(joinedOfferList, CategoryID)
         print(self.failedTasks)
         return {
@@ -231,7 +204,7 @@ class AllegroApi:
             'body': json.dumps(f'Done, {len(joinedOfferList)}')
         }
 
-    def saveOffers(self, offers, CategoryID):
+    def saveOffersToSQS(self, offers, CategoryID):
         dataChunk = 60
         maxEntries = 10
         auctions = []
@@ -262,10 +235,34 @@ class AllegroApi:
                                                        'data': auctions}),
                             'MessageGroupId': str(CategoryID)})
 
-            messages+=1
-        if(len(entries) != 0):
+            messages += 1
+        if (len(entries) != 0):
             response = self.databaseQueue.send_messages(Entries=entries)
 
         print(f'{self.GREEN} Result sent to DataBase Queue{self.RESET}')
 
+    def retryOnFail(self, callable, failMessage, reauth=False, *args):
+        result = False
+        try:
+            self.setNewProxy()
+            result = callable(*args)
+        except:
+            retrySucceded = False
+            for retry in range(self.maxRetries):
+                time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
+                self.setNewProxy()
+                try:
+                    result = callable(*args)
+                    retrySucceded = True
+                    break
+                except Exception as e:
+                    print(f'{failMessage} {retry}/{self.maxRetries}')
+                    if (reauth):
+                        self.retryOnFail(self.auth, "Failed to Authenticate")
+            if not retrySucceded:
+                result = {
+                    'statusCode': 429,
+                    'body': json.dumps(f'{failMessage}')
+                }
 
+        return result
