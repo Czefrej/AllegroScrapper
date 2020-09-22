@@ -16,10 +16,8 @@ class AllegroApi:
 
     def __init__(self, proxies,APICredentials):
         sqsResource = boto3.resource('sqs')
-        s3 = boto3.resource('s3')
         self.categoryQueue = sqsResource.get_queue_by_name(QueueName="CategoryQueue.fifo")
         self.databaseQueue = sqsResource.get_queue_by_name(QueueName="TradeDataSavingQueue.fifo")
-        self.bucket = s3.Bucket('biteye')
         self.APIAccessToken = None
         self.GREEN = colorama.Fore.GREEN
         self.GRAY = colorama.Fore.LIGHTBLACK_EX
@@ -103,24 +101,66 @@ class AllegroApi:
         if (x.status_code == 200):
             try:
                 response = x.json()
+                if 'items' in response:
+                    offersInIteration = response['items']['promoted'] + response['items']['regular']
+                if 'searchMeta' in response:
+                    available = int(response['searchMeta']['availableCount'])
+
+                for i in offersInIteration:
+                    if i['sellingMode']['format'] == "BUY_NOW" or i['sellingMode']['format'] == "AUCTION":
+                        if (i['sellingMode']['format'] == "BUY_NOW"):
+                            if 'popularity' in i['sellingMode']:
+                                popularity = i['sellingMode']['popularity']
+                            else:
+                                popularity = 0
+                        else:
+                            if 'popularity' in i['sellingMode']:
+                                popularity = i['sellingMode']['bidCount']
+                            else:
+                                popularity = 0
+                        img_url = None
+                        if 'images' in i:
+                            if (len(i['images']) > 0):
+                                img_url = i['images'][0]['url']
+                        if 'puiblication' in i:
+                            endingAt = i['publication']['endingAt']
+                        else:
+                            endingAt = 0
+
+                        seller_login = "unknown"
+                        if 'login' in i['seller']:
+                            seller_login = i['seller']['login']
+                        offersList.append(
+                            {'id': i['id'],
+                             'name': i['name'],
+                             'stock': i['stock']['available'],
+                             'price': i['sellingMode']['price']['amount'],
+                             'transactions': popularity,
+                             'offerType': i['sellingMode']['format'],
+                             'promotion': {
+                                 'emphasized': i['promotion']['emphasized'],
+                                 'bold': i['promotion']['bold'],
+                                 'highlight': i['promotion']['highlight']
+                             },
+                             'seller': {
+                                 'id': i['seller']['id'],
+                                 'login': seller_login,
+                                 'superSeller': i['seller']['superSeller'],
+                                 'company': i['seller']['company']
+                             },
+                             'imgURL': img_url,
+                             'delivery': {
+                                 'availableForFree': i['delivery']['availableForFree'],
+                                 'lowestPrice': i['delivery']['lowestPrice']
+                             },
+                             'endingAt': endingAt
+                             })
+
+
+
             except Exception as e:
                 print(e)
                 print(f"ERROR {x.text}")
-
-            if 'items' in response:
-                offersInIteration = response['items']['promoted'] + response['items']['regular']
-            if 'searchMeta' in response:
-                available = int(response['searchMeta']['availableCount'])
-
-            for i in offersInIteration:
-                if 'popularity' in i['sellingMode']:
-                    popularity = i['sellingMode']['popularity']
-                else:
-                    popularity = 0
-                offersList.append(
-                    {'id': i['id'], 'name': i['name'], 'stock': i['stock']['available'],
-                     'price': i['sellingMode']['price']['amount'],
-                     'original-price': i['sellingMode']['price']['amount'], 'transactions': popularity})
         else:
             self.failedTasks.append(url)
             print(url)
@@ -130,6 +170,7 @@ class AllegroApi:
         return offersList, available
 
     def searchForOffersRecurrently(self, CategoryID, PriceFrom=0, PriceTo=None):
+        print(f"Scrapping {CategoryID}")
         self.setNewProxy()
         self.retryOnFail(self.auth, "Failed to Authenticate")
         if (PriceFrom == 0):
@@ -162,7 +203,7 @@ class AllegroApi:
                     break
 
                 if (len(offersList) > 0):
-                    newPrice = float(offersList[len(offersList) - 1]['original-price'])
+                    newPrice = float(offersList[len(offersList) - 1]['price'])
                     if (newPrice < currentPrice):
                         priceStep += 1
                     if (currentPrice == newPrice):
@@ -180,7 +221,7 @@ class AllegroApi:
                                                          "priceTo": None, "apis": self.APICredentials,
                                                          "proxies": self.proxies}),
                               'MessageGroupId': str(f"{CategoryID}x{offersList[len(offersList) - 1]['id']}")}]
-                    response = self.categoryQueue.send_messages(Entries=entry)
+                    # response = self.categoryQueue.send_messages(Entries=entry)
 
 
                 else:
@@ -188,15 +229,15 @@ class AllegroApi:
             print(f"Found {total} in total.")
         joinedOfferList = []
         offset = 0
-        for i in range (100):
+        for i in range(100):
             offersList, available = self.getOffers(CategoryID, offset, PriceFrom, PriceTo)
-            if(len(offersList) > 0):
-                joinedOfferList= joinedOfferList+offersList
+            if (len(offersList) > 0):
+                joinedOfferList = joinedOfferList + offersList
             else:
                 break
             offset += 60
         if (len(joinedOfferList) > 0):
-            self.saveOffers(joinedOfferList, CategoryID)
+            self.saveOffersToSQS(joinedOfferList, CategoryID)
         print(self.failedTasks)
         return {
 
@@ -204,8 +245,9 @@ class AllegroApi:
             'body': json.dumps(f'Done, {len(joinedOfferList)}')
         }
 
+
     def saveOffersToSQS(self, offers, CategoryID):
-        dataChunk = 60
+        dataChunk = 40
         maxEntries = 10
         auctions = []
         entries = []
@@ -213,8 +255,7 @@ class AllegroApi:
         messages = 0
         for o in offers:
             auctions.append(
-                {'id': o['id'], 'name': o['name'], 'originalPrice': o['original-price'], 'price': o['price'],
-                 "stock": o['stock'], "transactions": o['transactions']})
+                o)
             c += 1
             if(c == dataChunk):
                 entries.append({'Id': str(f"{CategoryID}x{messages}"),
@@ -229,16 +270,16 @@ class AllegroApi:
                 self.databaseQueue.send_messages(Entries=entries)
                 entries = []
 
-        if(len(auctions) != 0):
+        if (len(auctions) != 0):
             entries.append({'Id': str(f"{CategoryID}-{messages}"),
                             'MessageBody': json.dumps({'id': str(CategoryID),
                                                        'data': auctions}),
                             'MessageGroupId': str(CategoryID)})
 
             messages += 1
-        if (len(entries) != 0):
-            response = self.databaseQueue.send_messages(Entries=entries)
-
+        # if (len(entries) != 0):
+        #     response = self.databaseQueue.send_messages(Entries=entries)
+        print(entries[0])
         print(f'{self.GREEN} Result sent to DataBase Queue{self.RESET}')
 
     def retryOnFail(self, callable, failMessage, reauth=False, *args):

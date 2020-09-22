@@ -8,7 +8,7 @@ data = {
         {
             "body": {
                 "id": 90061,
-                "priceFrom": 0,
+                "priceFrom": 12.16,
                 "priceTo": None,
                 "apis": [
                     [
