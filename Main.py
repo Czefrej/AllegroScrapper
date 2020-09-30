@@ -7,8 +7,8 @@ data = {
     "Records": [
         {
             "body": {
-                "id": 90061,
-                "priceFrom": 12.16,
+                "id": 12530,
+                "priceFrom": 0,
                 "priceTo": None,
                 "apis": [
                     [
@@ -74,6 +74,6 @@ def ScrapCategory(event = None,context=None):
         response = allegro.getCategories()
         return response
 
-
-Main(data)
+if __name__ == "__main__":
+    Main(data)
 #ScrapCategory()
