@@ -183,7 +183,8 @@ class AllegroApi:
             skip = False
             while True:
                 offersList, available = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
-
+                if available < 4000:
+                    break
                 if (len(offersList) == 0):
                     while True:
                         if (offset < 0):
@@ -221,7 +222,7 @@ class AllegroApi:
                                                          "priceTo": None, "apis": self.APICredentials,
                                                          "proxies": self.proxies}),
                               'MessageGroupId': str(f"{CategoryID}x{offersList[len(offersList) - 1]['id']}")}]
-                    # response = self.categoryQueue.send_messages(Entries=entry)
+                    response = self.categoryQueue.send_messages(Entries=entry)
 
 
                 else:
@@ -231,6 +232,7 @@ class AllegroApi:
         offset = 0
         for i in range(100):
             offersList, available = self.getOffers(CategoryID, offset, PriceFrom, PriceTo)
+            print(offersList)
             if (len(offersList) > 0):
                 joinedOfferList = joinedOfferList + offersList
             else:
@@ -253,6 +255,7 @@ class AllegroApi:
         entries = []
         c = 0
         messages = 0
+        print(offers)
         for o in offers:
             auctions.append(
                 o)
@@ -267,7 +270,8 @@ class AllegroApi:
                 c = 0
 
             if(len(entries) == maxEntries):
-                self.databaseQueue.send_messages(Entries=entries)
+                self.retryOnFail(self.databaseQueue.send_messages, 'Failed to send SQS message ', Entries=entries)
+
                 entries = []
 
         if (len(auctions) != 0):
@@ -277,23 +281,23 @@ class AllegroApi:
                             'MessageGroupId': str(CategoryID)})
 
             messages += 1
-        # if (len(entries) != 0):
-        #     response = self.databaseQueue.send_messages(Entries=entries)
-        print(entries[0])
+        if (len(entries) != 0):
+
+            self.retryOnFail(self.databaseQueue.send_messages,'Failed to send SQS message ',Entries=entries)
         print(f'{self.GREEN} Result sent to DataBase Queue{self.RESET}')
 
-    def retryOnFail(self, callable, failMessage, reauth=False, *args):
+    def retryOnFail(self, callable, failMessage, reauth=False, *args, **kwargs):
         result = False
         try:
             self.setNewProxy()
-            result = callable(*args)
+            result = callable(*args,**kwargs)
         except:
             retrySucceded = False
             for retry in range(self.maxRetries):
                 time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
                 self.setNewProxy()
                 try:
-                    result = callable(*args)
+                    result = callable(*args,**kwargs)
                     retrySucceded = True
                     break
                 except Exception as e:
