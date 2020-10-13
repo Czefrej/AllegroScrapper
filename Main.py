@@ -7,7 +7,7 @@ data = {
     "Records": [
         {
             "body": {
-                "id": 12530,
+                "id": 254718,
                 "priceFrom": 0,
                 "priceTo": None,
                 "apis": [
@@ -48,7 +48,8 @@ data = {
                     [
                         "http://ypeokuao-1:9ui94tr5b0ac@2.56.101.132:80"
                     ]
-                ]
+                ],
+                "resume":True
             }
         }
     ]
@@ -61,7 +62,10 @@ def Main(event,context=None):
         except:
             data = event['Records'][0]['body']
         allegro = AllegroApi(data['proxies'],data['apis'])
-        response = allegro.searchForOffersRecurrently(data['id'], data['priceFrom'], data['priceTo'])
+        if("resume" in data):
+            response = allegro.searchForOffersRecurrently(data['id'], data['priceFrom'], data['priceTo'],resume=True)
+        else:
+            response = allegro.searchForOffersRecurrently(data['id'], data['priceFrom'], data['priceTo'])
         return response
 
 def ScrapCategory(event = None,context=None):
@@ -73,6 +77,15 @@ def ScrapCategory(event = None,context=None):
         allegro.auth()
         response = allegro.getCategories()
         return response
+def test(event,context=None):
+    try:
+        data = json.loads(event['Records'][0]['body'])
+
+    except:
+        data = event['Records'][0]['body']
+
+    print(data)
+    print(event['Records'])
 
 if __name__ == "__main__":
     Main(data)
