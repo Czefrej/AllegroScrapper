@@ -3,6 +3,8 @@ import base64
 import colorama
 import os
 import random
+import string
+import sys
 import time
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -17,15 +19,13 @@ class AllegroApi:
     def __init__(self, proxies,APICredentials):
         sqsResource = boto3.resource('sqs')
         self.categoryQueue = sqsResource.get_queue_by_name(QueueName="CategoryQueue.fifo")
-        self.databaseQueue = sqsResource.get_queue_by_name(QueueName="TradeDataSavingQueue.fifo")
+        self.databaseQueues = [
+            sqsResource.get_queue_by_name(QueueName="TradeDataSavingQueue.fifo"),
+            sqsResource.get_queue_by_name(QueueName="TradeDataSavingQueue2.fifo")]
         self.APIAccessToken = None
-        self.GREEN = colorama.Fore.GREEN
-        self.GRAY = colorama.Fore.LIGHTBLACK_EX
-        self.RESET = colorama.Fore.RESET
-        self.RED = colorama.Fore.RED
 
         self.lastCompletedTask = None
-        self.retry_backoff_factor = 0.2
+        self.retry_backoff_factor = 0.1
         self.maxRetries = 5
         self.limit = 9000
         self.saveTreshold = 60000
@@ -58,6 +58,7 @@ class AllegroApi:
         if apiCredentials is not None:
             ClientId = apiCredentials[0]
             secret = apiCredentials[1]
+            print(f"Authenticating with {ClientId} {secret}")
         else:
             print("APICredentials are none")
 
@@ -69,11 +70,10 @@ class AllegroApi:
         response = self.session.post(url, headers={"Authorization": f"Basic {encodedStr}"})
         try:
             response = response.json()
+            self.APIAccessToken = response["access_token"]
         except Exception as e:
-            print(f"{response.status_code} , {response.text}, {response.headers}")
+            print(f"Size of message: {sys.getsizeof(response.text)} Headers : {response.status_code} , {response.text}, {response.headers}")
             raise Exception(e)
-
-        self.APIAccessToken = response["access_token"]
 
     def setNewProxy(self):
         proxy = random.choice(self.proxies)[0]
@@ -102,160 +102,238 @@ class AllegroApi:
             try:
                 response = x.json()
                 if 'items' in response:
+                    for i in response['items']['promoted']:
+                        i['promoted'] = True
                     offersInIteration = response['items']['promoted'] + response['items']['regular']
                 if 'searchMeta' in response:
                     available = int(response['searchMeta']['availableCount'])
 
+                # {'promoted': [], 'regular': [{'id': '1004951269', 'name': 'Honda Legend(Acura RL)',
+                #                               'vendor': {'id': 'ALLEGRO_LOKALNIE',
+                #                                          'url': 'https://allegrolokalnie.pl/oferta/honda-legend-acura-rl'},
+                #                               'seller': {'id': '10415339', 'login': 'wedo2', 'company': False,
+                #                                          'superSeller': False},
+                #                               'promotion': {'emphasized': False, 'bold': False, 'highlight': False},
+                #                               'delivery': {'availableForFree': False,
+                #                                            'lowestPrice': {'amount': '0.00', 'currency': 'PLN'}},
+                #                               'images': [{
+                #                                              'url': 'https://a.allegroimg.com/original/1e5877/a9a7496d4d19a94dd2e75ca9964f'}],
+                #                               'sellingMode': {'format': 'ADVERTISEMENT',
+                #                                               'price': {'amount': '16000.00', 'currency': 'PLN'}},
+                #                               'stock': {'unit': 'UNIT', 'available': 1}, 'category': {'id': '12530'},
+                #                               'publication': {'endingAt': '2020-10-16T04:52:45.000Z'}},
+                #                              {'id': '1005546157', 'name': 'HONDA LEGEND(ACURA RL)',
+                #                               'vendor': {'id': 'ALLEGRO_LOKALNIE',
+                #                                          'url': 'https://allegrolokalnie.pl/oferta/honda-legend-acura-rl-dtb'},
+                #                               'seller': {'id': '10415339', 'login': 'wedo2', 'company': False,
+                #                                          'superSeller': False},
+                #                               'promotion': {'emphasized': False, 'bold': False, 'highlight': False},
+                #                               'delivery': {'availableForFree': False,
+                #                                            'lowestPrice': {'amount': '0.00', 'currency': 'PLN'}},
+                #                               'images': [{
+                #                                              'url': 'https://a.allegroimg.com/original/1ea5d7/4c74693d4d738155d22ab1b540db'}],
+                #                               'sellingMode': {'format': 'ADVERTISEMENT',
+                #                                               'price': {'amount': '26000.00', 'currency': 'PLN'}},
+                #                               'stock': {'unit': 'UNIT', 'available': 1}, 'category': {'id': '12530'},
+                #                               'publication': {'endingAt': '2020-10-23T06:21:41.000Z'}}]}
                 for i in offersInIteration:
-                    if i['sellingMode']['format'] == "BUY_NOW" or i['sellingMode']['format'] == "AUCTION":
-                        if (i['sellingMode']['format'] == "BUY_NOW"):
-                            if 'popularity' in i['sellingMode']:
-                                popularity = i['sellingMode']['popularity']
-                            else:
-                                popularity = 0
+                    if (i['sellingMode']['format'] == "BUY_NOW"):
+                        if 'popularity' in i['sellingMode']:
+                            popularity = i['sellingMode']['popularity']
                         else:
-                            if 'popularity' in i['sellingMode']:
-                                popularity = i['sellingMode']['bidCount']
-                            else:
-                                popularity = 0
-                        img_url = None
-                        if 'images' in i:
-                            if (len(i['images']) > 0):
-                                img_url = i['images'][0]['url']
-                        if 'puiblication' in i:
-                            endingAt = i['publication']['endingAt']
+                            popularity = 0
+                    else:
+                        if 'popularity' in i['sellingMode']:
+                            popularity = i['sellingMode']['bidCount']
                         else:
-                            endingAt = 0
+                            popularity = 0
+                    img_url = None
+                    if 'images' in i:
+                        if (len(i['images']) > 0):
+                            img_url = i['images'][0]['url']
+                    if 'puiblication' in i:
+                        endingAt = i['publication']['endingAt']
+                    else:
+                        endingAt = 0
 
-                        seller_login = "unknown"
-                        if 'login' in i['seller']:
-                            seller_login = i['seller']['login']
-                        offersList.append(
-                            {'id': i['id'],
-                             'name': i['name'],
-                             'stock': i['stock']['available'],
-                             'price': i['sellingMode']['price']['amount'],
-                             'transactions': popularity,
-                             'offerType': i['sellingMode']['format'],
-                             'promotion': {
-                                 'emphasized': i['promotion']['emphasized'],
-                                 'bold': i['promotion']['bold'],
-                                 'highlight': i['promotion']['highlight']
-                             },
-                             'seller': {
-                                 'id': i['seller']['id'],
-                                 'login': seller_login,
-                                 'superSeller': i['seller']['superSeller'],
-                                 'company': i['seller']['company']
-                             },
-                             'imgURL': img_url,
-                             'delivery': {
-                                 'availableForFree': i['delivery']['availableForFree'],
-                                 'lowestPrice': i['delivery']['lowestPrice']
-                             },
-                             'endingAt': endingAt
-                             })
+                    if 'promoted' in i:
+                        promoted = True
+                    else:
+                        promoted = False
+
+                    seller_login = "unknown"
+                    if 'login' in i['seller']:
+                        seller_login = i['seller']['login']
+                    offersList.append(
+                        {'id': i['id'],
+                         'name': i['name'],
+                         'stock': i['stock']['available'],
+                         'price': i['sellingMode']['price']['amount'],
+                         'transactions': popularity,
+                         'offerType': i['sellingMode']['format'],
+                         'promotion': {
+                             'promoted': promoted,
+                             'emphasized': i['promotion']['emphasized'],
+                             'bold': i['promotion']['bold'],
+                             'highlight': i['promotion']['highlight']
+                         },
+                         'seller': {
+                             'id': i['seller']['id'],
+                             'login': seller_login,
+                             'superSeller': i['seller']['superSeller'],
+                             'company': i['seller']['company']
+                         },
+                         'imgURL': img_url,
+                         'delivery': {
+                             'availableForFree': i['delivery']['availableForFree'],
+                             'lowestPrice': i['delivery']['lowestPrice']
+                         },
+                         'endingAt': endingAt
+                         })
 
 
 
             except Exception as e:
                 print(e)
-                print(f"ERROR {x.text}")
+                print(f"ERROR {x.headers} : {x.text}")
+                entry = [{'Id': str(f"{CategoryID}"),
+                          'MessageBody': json.dumps({'id': str(CategoryID),
+                                                     "priceFrom": PriceFrom,
+                                                     "priceTo": PriceTo, "apis": self.APICredentials,
+                                                     "proxies": self.proxies}),
+                          'MessageGroupId': str(random.randint(0,int(os.environ.get('MAX_CONCURRENCY')))),
+                          'MessageDeduplicationId':f"{CategoryID}x{str(PriceFrom).replace('.','').replace(',','')}"}]
+                response = self.categoryQueue.send_messages(Entries=entry)
         else:
             self.failedTasks.append(url)
-            print(url)
+            entry = [{'Id': str(f"{CategoryID}"),
+                      'MessageBody': json.dumps({'id': str(CategoryID),
+                                                 "priceFrom": PriceFrom,
+                                                 "priceTo": None, "apis": self.APICredentials,
+                                                 "proxies": self.proxies}),
+                      'MessageGroupId': str(random.randint(0, int(os.environ.get('MAX_CONCURRENCY')))),
+                      'MessageDeduplicationId': f"{CategoryID}x{str(PriceFrom).replace('.', '').replace(',', '')}"}]
+            response = self.categoryQueue.send_messages(Entries=entry)
+            print(f"ERROR - Failed task ({url}) - code {x.status_code}")
             self.auth()
             self.setNewProxy()
 
         return offersList, available
 
-    def searchForOffersRecurrently(self, CategoryID, PriceFrom=0, PriceTo=None):
-        print(f"Scrapping {CategoryID}")
+    def generateDeduplicationToken(self, N=9):
+        return ''.join(random.choices(string.ascii_uppercase + string.digits, k=N))
+
+    def searchForOffersRecurrently(self, CategoryID, PriceFrom=0, PriceTo=None, resume=False):
+        func_begin_time = time.time()
+        print(f"Scrapping {CategoryID} in price range {PriceFrom} - {PriceTo}")
         self.setNewProxy()
         self.retryOnFail(self.auth, "Failed to Authenticate")
-        if (PriceFrom == 0):
-            notFullResponseCount = 0
-            currentPrice = PriceFrom
-            offset = 5940
-            step = 60
-            priceStep = 0.01
-            total = 0
-            skip = False
-            while True:
-                offersList, available = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
-                if available < 4000:
-                    break
-                if (len(offersList) == 0):
-                    while True:
-                        if (offset < 0):
-                            skip = True
-                            break
-                        offersList, available = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
-                        if (available == 0):
-                            break
-                        if (len(offersList) > 0):
-                            break
-                        offset = available - 1
-
-                    if (notFullResponseCount > 3):
+        if(not resume):
+            if (PriceFrom == 0):
+                notFullResponseCount = 0
+                currentPrice = PriceFrom
+                offset = 5940
+                step = 60
+                priceStep = 0.01
+                total = 0
+                skip = False
+                while True:
+                    start_time = time.time()
+                    offersList, available = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
+                    if available < 4000 and total == 0:
                         break
-                    notFullResponseCount += 1
-                if skip:
-                    break
+                    if (len(offersList) == 0):
+                        while True:
+                            if (offset < 0):
+                                skip = True
+                                break
+                            offersList, available = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
+                            if (available == 0):
+                                break
+                            if (len(offersList) > 0):
+                                break
+                            offset = available - 1
+
+                        if (notFullResponseCount > 3):
+                            break
+                        notFullResponseCount += 1
+                    if skip:
+                        break
+
+                    if (len(offersList) > 0):
+                        newPrice = float(offersList[len(offersList) - 1]['price'])
+                        if (newPrice < currentPrice):
+                            priceStep += 1
+                        if (currentPrice == newPrice):
+                            newPrice += priceStep
+
+                        currentPrice = newPrice
+
+                        total += available
+
+                        print(f"Found {len(offersList) + offset} at price < {currentPrice} in {time.time() - start_time} s")
+
+                        if((len(offersList) + offset)>1):
+                            entry = [{'Id': str(f"{CategoryID}x{offersList[len(offersList) - 1]['id']}"),
+                                      'MessageBody': json.dumps({'id': str(CategoryID),
+                                                                 "priceFrom": currentPrice,
+                                                                 "priceTo": None, "apis": self.APICredentials,
+                                                                 "proxies": self.proxies}),
+                                      'MessageGroupId': str(random.randint(0,int(os.environ.get('MAX_CONCURRENCY')))),
+                                      'MessageDeduplicationId':f"{CategoryID}x{str(PriceFrom).replace('.','').replace(',','')}"}]
+                            response = self.categoryQueue.send_messages(Entries=entry)
+
+                        if((len(offersList) + offset)<6000):
+                            break
+                    else:
+                        break
+                print(f"Distributed {total} tasks in total.")
+
+        if((time.time()-func_begin_time) <= int(os.environ.get('RESUME_THRESHOLD'))):
+            joinedOfferList = []
+            offset = 0
+            for i in range(100):
+                start_time = time.time()
+                offersList, available = self.getOffers(CategoryID, offset, PriceFrom, PriceTo)
+
+                if (time.time() - start_time)>=2:
+                    self.retryOnFail(self.auth, "Failed to Authenticate")
 
                 if (len(offersList) > 0):
-                    newPrice = float(offersList[len(offersList) - 1]['price'])
-                    if (newPrice < currentPrice):
-                        priceStep += 1
-                    if (currentPrice == newPrice):
-                        newPrice += priceStep
-
-                    currentPrice = newPrice
-
-                    total += available
-
-                    print(f"Found {len(offersList) + offset} at price < {currentPrice} ")
-
-                    entry = [{'Id': str(f"{CategoryID}x{offersList[len(offersList) - 1]['id']}"),
-                              'MessageBody': json.dumps({'id': str(CategoryID),
-                                                         "priceFrom": currentPrice,
-                                                         "priceTo": None, "apis": self.APICredentials,
-                                                         "proxies": self.proxies}),
-                              'MessageGroupId': str(f"{CategoryID}x{offersList[len(offersList) - 1]['id']}")}]
-                    response = self.categoryQueue.send_messages(Entries=entry)
-
-
+                    joinedOfferList = joinedOfferList + offersList
                 else:
                     break
-            print(f"Found {total} in total.")
-        joinedOfferList = []
-        offset = 0
-        for i in range(100):
-            offersList, available = self.getOffers(CategoryID, offset, PriceFrom, PriceTo)
-            print(offersList)
-            if (len(offersList) > 0):
-                joinedOfferList = joinedOfferList + offersList
-            else:
-                break
-            offset += 60
-        if (len(joinedOfferList) > 0):
-            self.saveOffersToSQS(joinedOfferList, CategoryID)
-        print(self.failedTasks)
-        return {
+                offset += 60
+            if (len(joinedOfferList) > 0):
+                self.saveOffersToSQS(joinedOfferList, CategoryID)
+            return {
 
-            'statusCode': 200,
-            'body': json.dumps(f'Done, {len(joinedOfferList)}')
-        }
+                'statusCode': 200,
+                'body': json.dumps(f'Done, {len(joinedOfferList)}')
+            }
+        else:
+            print("Sent resume request")
+            entry = [{'Id': str(f"RESUME-{CategoryID}"),
+                      'MessageBody': json.dumps({'id': str(CategoryID),
+                                                 "priceFrom": PriceFrom,
+                                                 "priceTo": PriceTo,
+                                                 "apis": self.APICredentials,
+                                                 "proxies": self.proxies,
+                                                 "resume": True}),
+                      'MessageGroupId': str(random.randint(0, int(os.environ.get('MAX_CONCURRENCY')))),
+                      'MessageDeduplicationId': f"RESUME-{CategoryID}x{str(PriceFrom).replace('.', '').replace(',', '')}"}]
+            response = self.categoryQueue.send_messages(Entries=entry)
 
 
     def saveOffersToSQS(self, offers, CategoryID):
+        start_time = time.time()
+        dbQueue = random.choice(self.databaseQueues)
         dataChunk = 40
         maxEntries = 10
         auctions = []
         entries = []
         c = 0
         messages = 0
-        print(offers)
         for o in offers:
             auctions.append(
                 o)
@@ -264,13 +342,14 @@ class AllegroApi:
                 entries.append({'Id': str(f"{CategoryID}x{messages}"),
                                 'MessageBody': json.dumps({'id': str(CategoryID),
                                                            'data': auctions}),
-                                'MessageGroupId': str(CategoryID)})
+                                'MessageGroupId': str(CategoryID),
+                                'MessageDeduplicationId':self.generateDeduplicationToken()})
                 messages += 1
                 auctions = []
                 c = 0
 
             if(len(entries) == maxEntries):
-                self.retryOnFail(self.databaseQueue.send_messages, 'Failed to send SQS message ', Entries=entries)
+                self.retryOnFail(dbQueue.send_messages, 'Failed to send SQS message ', Entries=entries)
 
                 entries = []
 
@@ -278,20 +357,21 @@ class AllegroApi:
             entries.append({'Id': str(f"{CategoryID}-{messages}"),
                             'MessageBody': json.dumps({'id': str(CategoryID),
                                                        'data': auctions}),
-                            'MessageGroupId': str(CategoryID)})
+                            'MessageGroupId': str(CategoryID),
+                            'MessageDeduplicationId':self.generateDeduplicationToken()})
 
             messages += 1
         if (len(entries) != 0):
 
-            self.retryOnFail(self.databaseQueue.send_messages,'Failed to send SQS message ',Entries=entries)
-        print(f'{self.GREEN} Result sent to DataBase Queue{self.RESET}')
+            self.retryOnFail(dbQueue.send_messages,'Failed to send SQS message ',Entries=entries)
+        print(f'Result sent to DataBase Queue in {time.time() - start_time} s')
 
     def retryOnFail(self, callable, failMessage, reauth=False, *args, **kwargs):
         result = False
         try:
             self.setNewProxy()
             result = callable(*args,**kwargs)
-        except:
+        except Exception as e:
             retrySucceded = False
             for retry in range(self.maxRetries):
                 time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
@@ -301,7 +381,7 @@ class AllegroApi:
                     retrySucceded = True
                     break
                 except Exception as e:
-                    print(f'{failMessage} {retry}/{self.maxRetries}')
+                    print(f'Failed retry: {failMessage} ({e}) {retry}/{self.maxRetries}')
                     if (reauth):
                         self.retryOnFail(self.auth, "Failed to Authenticate")
             if not retrySucceded:
