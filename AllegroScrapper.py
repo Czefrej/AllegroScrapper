@@ -102,7 +102,7 @@ class AllegroScrapper:
         if self.soup is None:
             raise Exception("Soup cannot be None - use scrap method first")
         else:
-            print(self.soup.find("meta", {"itemprop": "price"})["content"])
+            print(self.soup.find("meta", {"itemprop" : "price"})["content"])
 
     def getQuantity(self):
         if self.quantity is not None:

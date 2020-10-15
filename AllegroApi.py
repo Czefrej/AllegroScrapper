@@ -1,14 +1,13 @@
+import traceback
+
 import requests
 import base64
-import colorama
 import os
 import random
 import string
 import sys
-import time
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
-import csv
 import time
 import json
 import boto3
@@ -188,14 +187,14 @@ class AllegroApi:
                              'availableForFree': i['delivery']['availableForFree'],
                              'lowestPrice': i['delivery']['lowestPrice']
                          },
-                         'endingAt': endingAt
+                         'endingAt': endingAt,
+                         'creation_date': time.strftime('%Y-%m-%d %H:%M:%S')
                          })
 
 
-
             except Exception as e:
-                print(e)
-                print(f"ERROR {x.headers} : {x.text}")
+                print(traceback.format_exception(None, e, e.__traceback__), file=sys.stderr, flush=True)
+                print(f"ERROR {sys.getsizeof(x.text)}, {x.headers} : {x.text}")
                 entry = [{'Id': str(f"{CategoryID}"),
                           'MessageBody': json.dumps({'id': str(CategoryID),
                                                      "priceFrom": PriceFrom,
@@ -230,6 +229,7 @@ class AllegroApi:
         self.retryOnFail(self.auth, "Failed to Authenticate")
         if(not resume):
             if (PriceFrom == 0):
+                i = 0
                 notFullResponseCount = 0
                 currentPrice = PriceFrom
                 offset = 5940
@@ -274,20 +274,20 @@ class AllegroApi:
                         print(f"Found {len(offersList) + offset} at price < {currentPrice} in {time.time() - start_time} s")
 
                         if((len(offersList) + offset)>1):
+                            i +=1
                             entry = [{'Id': str(f"{CategoryID}x{offersList[len(offersList) - 1]['id']}"),
                                       'MessageBody': json.dumps({'id': str(CategoryID),
                                                                  "priceFrom": currentPrice,
                                                                  "priceTo": None, "apis": self.APICredentials,
                                                                  "proxies": self.proxies}),
-                                      'MessageGroupId': str(random.randint(0,int(os.environ.get('MAX_CONCURRENCY')))),
-                                      'MessageDeduplicationId':f"{CategoryID}x{str(PriceFrom).replace('.','').replace(',','')}"}]
+                                      'MessageGroupId': str(random.randint(0, int(os.environ.get('MAX_CONCURRENCY')))),
+                                      'MessageDeduplicationId':f"{CategoryID}x{str(currentPrice).replace('.','').replace(',','')}"}]
                             response = self.categoryQueue.send_messages(Entries=entry)
-
                         if((len(offersList) + offset)<6000):
                             break
                     else:
                         break
-                print(f"Distributed {total} tasks in total.")
+                print(f"Distributed {i} tasks in total.")
 
         if((time.time()-func_begin_time) <= int(os.environ.get('RESUME_THRESHOLD'))):
             joinedOfferList = []
@@ -305,6 +305,7 @@ class AllegroApi:
                     break
                 offset += 60
             if (len(joinedOfferList) > 0):
+                print("")
                 self.saveOffersToSQS(joinedOfferList, CategoryID)
             return {
 
@@ -328,7 +329,7 @@ class AllegroApi:
     def saveOffersToSQS(self, offers, CategoryID):
         start_time = time.time()
         dbQueue = random.choice(self.databaseQueues)
-        dataChunk = 40
+        dataChunk = int(os.environ.get('CHUNKS_IN_MESSAGE'))
         maxEntries = 10
         auctions = []
         entries = []
