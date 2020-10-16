@@ -95,134 +95,80 @@ class AllegroApi:
 
         if (PriceTo is not None):
             url = f"{url}&price.to={PriceTo}"
-
-        x = self.retryOnFail(self.sendAPIRequest, "Failed to fetch data.", True, url)
+        x = self.retryOnFail(self.sendAPIRequest, "Failed to fetch data.", True, url=url)[0]
         if (x.status_code == 200):
-            try:
-                response = x.json()
-                if 'items' in response:
-                    for i in response['items']['promoted']:
-                        i['promoted'] = True
-                    offersInIteration = response['items']['promoted'] + response['items']['regular']
-                if 'searchMeta' in response:
-                    available = int(response['searchMeta']['availableCount'])
+            response = x.json()
+            if 'items' in response:
+                for i in response['items']['promoted']:
+                    i['promoted'] = True
+                offersInIteration = response['items']['promoted'] + response['items']['regular']
+            if 'searchMeta' in response:
+                available = int(response['searchMeta']['availableCount'])
 
-                # {'promoted': [], 'regular': [{'id': '1004951269', 'name': 'Honda Legend(Acura RL)',
-                #                               'vendor': {'id': 'ALLEGRO_LOKALNIE',
-                #                                          'url': 'https://allegrolokalnie.pl/oferta/honda-legend-acura-rl'},
-                #                               'seller': {'id': '10415339', 'login': 'wedo2', 'company': False,
-                #                                          'superSeller': False},
-                #                               'promotion': {'emphasized': False, 'bold': False, 'highlight': False},
-                #                               'delivery': {'availableForFree': False,
-                #                                            'lowestPrice': {'amount': '0.00', 'currency': 'PLN'}},
-                #                               'images': [{
-                #                                              'url': 'https://a.allegroimg.com/original/1e5877/a9a7496d4d19a94dd2e75ca9964f'}],
-                #                               'sellingMode': {'format': 'ADVERTISEMENT',
-                #                                               'price': {'amount': '16000.00', 'currency': 'PLN'}},
-                #                               'stock': {'unit': 'UNIT', 'available': 1}, 'category': {'id': '12530'},
-                #                               'publication': {'endingAt': '2020-10-16T04:52:45.000Z'}},
-                #                              {'id': '1005546157', 'name': 'HONDA LEGEND(ACURA RL)',
-                #                               'vendor': {'id': 'ALLEGRO_LOKALNIE',
-                #                                          'url': 'https://allegrolokalnie.pl/oferta/honda-legend-acura-rl-dtb'},
-                #                               'seller': {'id': '10415339', 'login': 'wedo2', 'company': False,
-                #                                          'superSeller': False},
-                #                               'promotion': {'emphasized': False, 'bold': False, 'highlight': False},
-                #                               'delivery': {'availableForFree': False,
-                #                                            'lowestPrice': {'amount': '0.00', 'currency': 'PLN'}},
-                #                               'images': [{
-                #                                              'url': 'https://a.allegroimg.com/original/1ea5d7/4c74693d4d738155d22ab1b540db'}],
-                #                               'sellingMode': {'format': 'ADVERTISEMENT',
-                #                                               'price': {'amount': '26000.00', 'currency': 'PLN'}},
-                #                               'stock': {'unit': 'UNIT', 'available': 1}, 'category': {'id': '12530'},
-                #                               'publication': {'endingAt': '2020-10-23T06:21:41.000Z'}}]}
-                for i in offersInIteration:
-                    if (i['sellingMode']['format'] == "BUY_NOW"):
-                        if 'popularity' in i['sellingMode']:
-                            popularity = i['sellingMode']['popularity']
-                        else:
-                            popularity = 0
+            for i in offersInIteration:
+                if (i['sellingMode']['format'] == "BUY_NOW"):
+                    if 'popularity' in i['sellingMode']:
+                        popularity = i['sellingMode']['popularity']
                     else:
-                        if 'popularity' in i['sellingMode']:
-                            popularity = i['sellingMode']['bidCount']
-                        else:
-                            popularity = 0
-                    img_url = None
-                    if 'images' in i:
-                        if (len(i['images']) > 0):
-                            img_url = i['images'][0]['url']
-                    if 'puiblication' in i:
-                        endingAt = i['publication']['endingAt']
+                        popularity = 0
+                else:
+                    if 'popularity' in i['sellingMode']:
+                        popularity = i['sellingMode']['bidCount']
                     else:
-                        endingAt = 0
+                        popularity = 0
+                img_url = None
+                if 'images' in i:
+                    if (len(i['images']) > 0):
+                        img_url = i['images'][0]['url']
+                if 'puiblication' in i:
+                    endingAt = i['publication']['endingAt']
+                else:
+                    endingAt = 0
 
-                    if 'promoted' in i:
-                        promoted = True
-                    else:
-                        promoted = False
+                if 'promoted' in i:
+                    promoted = True
+                else:
+                    promoted = False
 
-                    seller_login = "unknown"
-                    if 'login' in i['seller']:
-                        seller_login = i['seller']['login']
-                    offersList.append(
-                        {'id': i['id'],
-                         'name': i['name'],
-                         'stock': i['stock']['available'],
-                         'price': i['sellingMode']['price']['amount'],
-                         'transactions': popularity,
-                         'offerType': i['sellingMode']['format'],
-                         'promotion': {
-                             'promoted': promoted,
-                             'emphasized': i['promotion']['emphasized'],
-                             'bold': i['promotion']['bold'],
-                             'highlight': i['promotion']['highlight']
-                         },
-                         'seller': {
-                             'id': i['seller']['id'],
-                             'login': seller_login,
-                             'superSeller': i['seller']['superSeller'],
-                             'company': i['seller']['company']
-                         },
-                         'imgURL': img_url,
-                         'delivery': {
-                             'availableForFree': i['delivery']['availableForFree'],
-                             'lowestPrice': i['delivery']['lowestPrice']
-                         },
-                         'endingAt': endingAt,
-                         'creation_date': time.strftime('%Y-%m-%d %H:%M:%S')
-                         })
-
-
-            except Exception as e:
-                print(traceback.format_exception(None, e, e.__traceback__), file=sys.stderr, flush=True)
-                print(f"ERROR {sys.getsizeof(x.text)}, {x.headers} : {x.text}")
-                entry = [{'Id': str(f"{CategoryID}"),
-                          'MessageBody': json.dumps({'id': str(CategoryID),
-                                                     "priceFrom": PriceFrom,
-                                                     "priceTo": PriceTo, "apis": self.APICredentials,
-                                                     "proxies": self.proxies}),
-                          'MessageGroupId': str(random.randint(0,int(os.environ.get('MAX_CONCURRENCY')))),
-                          'MessageDeduplicationId':f"{CategoryID}x{str(PriceFrom).replace('.','').replace(',','')}"}]
-                response = self.categoryQueue.send_messages(Entries=entry)
+                seller_login = "unknown"
+                if 'login' in i['seller']:
+                    seller_login = i['seller']['login']
+                offersList.append(
+                    {'id': i['id'],
+                     'name': i['name'],
+                     'stock': i['stock']['available'],
+                     'price': i['sellingMode']['price']['amount'],
+                     'transactions': popularity,
+                     'offerType': i['sellingMode']['format'],
+                     'promotion': {
+                         'promoted': promoted,
+                         'emphasized': i['promotion']['emphasized'],
+                         'bold': i['promotion']['bold'],
+                         'highlight': i['promotion']['highlight']
+                     },
+                     'seller': {
+                         'id': i['seller']['id'],
+                         'login': seller_login,
+                         'superSeller': i['seller']['superSeller'],
+                         'company': i['seller']['company']
+                     },
+                     'imgURL': img_url,
+                     'delivery': {
+                         'availableForFree': i['delivery']['availableForFree'],
+                         'lowestPrice': i['delivery']['lowestPrice']
+                     },
+                     'endingAt': endingAt,
+                     'creation_date': time.strftime('%Y-%m-%d %H:%M:%S')
+                     })
         else:
-            self.failedTasks.append(url)
-            entry = [{'Id': str(f"{CategoryID}"),
-                      'MessageBody': json.dumps({'id': str(CategoryID),
-                                                 "priceFrom": PriceFrom,
-                                                 "priceTo": None, "apis": self.APICredentials,
-                                                 "proxies": self.proxies}),
-                      'MessageGroupId': str(random.randint(0, int(os.environ.get('MAX_CONCURRENCY')))),
-                      'MessageDeduplicationId': f"{CategoryID}x{str(PriceFrom).replace('.', '').replace(',', '')}"}]
-            response = self.categoryQueue.send_messages(Entries=entry)
-            print(f"ERROR - Failed task ({url}) - code {x.status_code}")
-            self.auth()
-            self.setNewProxy()
-
+            raise Exception(f"Received {x.status_code} response")
         return offersList, available
+
 
     def generateDeduplicationToken(self, N=9):
         return ''.join(random.choices(string.ascii_uppercase + string.digits, k=N))
 
-    def searchForOffersRecurrently(self, CategoryID, PriceFrom=0, PriceTo=None, resume=False):
+    def searchForOffersRecurrently(self, CategoryID=0, PriceFrom=0, PriceTo=None, resume=False):
         func_begin_time = time.time()
         print(f"Scrapping {CategoryID} in price range {PriceFrom} - {PriceTo}")
         self.setNewProxy()
@@ -239,7 +185,10 @@ class AllegroApi:
                 skip = False
                 while True:
                     start_time = time.time()
-                    offersList, available = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
+                    offersList, available = self.retryOnFail(self.getOffers,f"Failed to get offers at {CategoryID} at price range {currentPrice} - {PriceTo}[{offset}]",reauth=True,double_return=True,CategoryID = CategoryID, offset = offset, PriceFrom=currentPrice, PriceTo=PriceTo)
+                    print(offersList)
+                    if(offersList == False):
+                        raise Exception(f"Failed scrapping at {CategoryID} at {currentPrice} - {PriceTo}[{offset}]")
                     if available < 4000 and total == 0:
                         break
                     if (len(offersList) == 0):
@@ -247,7 +196,10 @@ class AllegroApi:
                             if (offset < 0):
                                 skip = True
                                 break
-                            offersList, available = self.getOffers(CategoryID, offset, currentPrice, PriceTo)
+                            offersList, available = self.retryOnFail(self.getOffers,f"Failed to get offers at {CategoryID} at price range {currentPrice} - {PriceTo}[{offset}]",reauth=True,double_return=True,CategoryID = CategoryID, offset = offset, PriceFrom=currentPrice, PriceTo=PriceTo)
+                            if (offersList == False):
+                                raise Exception(
+                                    f"Failed scrapping at {CategoryID} at {currentPrice} - {PriceTo}[{offset}]")
                             if (available == 0):
                                 break
                             if (len(offersList) > 0):
@@ -283,7 +235,7 @@ class AllegroApi:
                                       'MessageGroupId': str(random.randint(0, int(os.environ.get('MAX_CONCURRENCY')))),
                                       'MessageDeduplicationId':f"{CategoryID}x{str(currentPrice).replace('.','').replace(',','')}"}]
                             response = self.categoryQueue.send_messages(Entries=entry)
-                        if((len(offersList) + offset)<6000):
+                        if((len(offersList) + offset)<5997):
                             break
                     else:
                         break
@@ -294,18 +246,30 @@ class AllegroApi:
             offset = 0
             for i in range(100):
                 start_time = time.time()
-                offersList, available = self.getOffers(CategoryID, offset, PriceFrom, PriceTo)
+                offersList = self.retryOnFail(self.getOffers,f"Failed to get offers at {CategoryID} at price range {PriceFrom} - {PriceTo}[{offset}]",reauth=True,double_return=True,CategoryID = CategoryID, offset = offset, PriceFrom=PriceFrom, PriceTo=PriceTo)
+                if(offersList == False):
+                    entry = [{'Id': str(f"RESUME-{CategoryID}"),
+                              'MessageBody': json.dumps({'id': str(CategoryID),
+                                                         "priceFrom": PriceFrom,
+                                                         "priceTo": PriceTo,
+                                                         "apis": self.APICredentials,
+                                                         "proxies": self.proxies,
+                                                         "resume": True}),
+                              'MessageGroupId': str(random.randint(0, int(os.environ.get('MAX_CONCURRENCY')))),
+                              'MessageDeduplicationId': f"RESUME-{CategoryID}x{str(PriceFrom).replace('.', '').replace(',', '')}"}]
+                    response = self.categoryQueue.send_messages(Entries=entry)
+                    break
+
 
                 if (time.time() - start_time)>=2:
                     self.retryOnFail(self.auth, "Failed to Authenticate")
 
-                if (len(offersList) > 0):
-                    joinedOfferList = joinedOfferList + offersList
+                if (len(offersList[0]) > 0):
+                    joinedOfferList = joinedOfferList + offersList[0]
                 else:
                     break
                 offset += 60
             if (len(joinedOfferList) > 0):
-                print("")
                 self.saveOffersToSQS(joinedOfferList, CategoryID)
             return {
 
@@ -367,18 +331,25 @@ class AllegroApi:
             self.retryOnFail(dbQueue.send_messages,'Failed to send SQS message ',Entries=entries)
         print(f'Result sent to DataBase Queue in {time.time() - start_time} s')
 
-    def retryOnFail(self, callable, failMessage, reauth=False, *args, **kwargs):
+    def retryOnFail(self, callable, failMessage, reauth=False,double_return=False, *args, **kwargs):
         result = False
+        result2 = 0
         try:
             self.setNewProxy()
-            result = callable(*args,**kwargs)
+            if(double_return):
+                result,result2 = callable(*args, **kwargs)
+            else:
+                result = callable(*args,**kwargs)
         except Exception as e:
             retrySucceded = False
             for retry in range(self.maxRetries):
                 time.sleep(self.retry_backoff_factor * (2 ** (retry) - 1))
                 self.setNewProxy()
                 try:
-                    result = callable(*args,**kwargs)
+                    if (double_return):
+                        result, result2 = callable(*args, **kwargs)
+                    else:
+                        result = callable(*args, **kwargs)
                     retrySucceded = True
                     break
                 except Exception as e:
@@ -391,4 +362,4 @@ class AllegroApi:
                     'body': json.dumps(f'{failMessage}')
                 }
 
-        return result
+        return result,result2
